@@ -1,0 +1,41 @@
+package com.omnitask.AuthAndProfiles.domain.models;
+
+import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Document(collection = "profiles")
+public class Profile {
+
+    @Id
+    private String id;
+    private String userId;
+
+    private String fullName;
+    private String currentRole;
+
+    private String description;
+    private String photoUrl;
+    private List<String> categories;
+    private String locationCoverage;
+
+    private Float reputationScore;
+    private int totalReviews;
+
+    private String documentUrl;
+    private VerificationStatus identityVerificationStatus;
+
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
