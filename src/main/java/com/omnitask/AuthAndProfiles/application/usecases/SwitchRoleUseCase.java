@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.models.User;
@@ -19,7 +20,7 @@ public class SwitchRoleUseCase {
 
     public AuthResponseDTO execute(String email, Role newRole) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+                .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
 
         if (newRole == Role.ADMIN) {
             throw new IllegalArgumentException("No se puede asignar el rol de administrador por cambio dinámico.");

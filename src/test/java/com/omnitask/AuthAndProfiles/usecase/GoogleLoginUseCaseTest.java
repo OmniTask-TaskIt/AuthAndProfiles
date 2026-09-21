@@ -5,7 +5,9 @@ import com.omnitask.AuthAndProfiles.application.usecases.GoogleLoginUseCase;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.omnitask.AuthAndProfiles.application.services.GoogleAuthService;
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
+import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
@@ -21,7 +23,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -88,5 +92,21 @@ class GoogleLoginUseCaseTest {
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(userRepository).save(argThat((User u) -> u.getAuthProvider() == AuthProvider.GOOGLE && u.isEmailVerified()));
         verify(profileRepository).save(any());
+    }
+
+    @Test
+    void execute_deberiaLanzarExcepcion_cuandoLaCuentaDeGoogleEstaSuspendida() {
+        // Arrange
+        User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER)
+                .accountStatus(AccountStatus.SUSPENDED).build();
+        when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("test@gmail.com", "Robin"));
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+
+        // Act & Assert
+        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token"))
+                .isInstanceOf(AccountRestrictedException.class)
+                .hasMessageContaining("suspendida");
+        verify(jwtService, never()).generateAccessToken(any(), any());
+        verify(tokenRedisRepository, never()).saveRefreshToken(any(), any(), anyLong());
     }
 }

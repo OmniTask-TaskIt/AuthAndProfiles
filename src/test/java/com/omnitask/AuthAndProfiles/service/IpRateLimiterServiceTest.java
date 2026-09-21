@@ -84,6 +84,34 @@ class IpRateLimiterServiceTest {
     }
 
     @Test
+    void recordFailedAttempt_noDeberiaExpirarNiBloquear_cuandoLosIntentosEstanEntreElPrimeroYElMaximo() {
+        // Arrange
+        when(valueOperations.increment("attempts_ip:127.0.0.1")).thenReturn(3L);
+
+        // Act
+        ipRateLimiterService.recordFailedAttempt("127.0.0.1");
+
+        // Assert
+        verify(redisTemplate, never()).expire(anyString(), anyLong(), any());
+        verify(valueOperations, never()).set(anyString(), anyString(), anyLong(), any());
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    @Test
+    void recordFailedAttempt_noDeberiaHacerNada_cuandoRedisRetornaNullEnElIncremento() {
+        // Arrange
+        when(valueOperations.increment("attempts_ip:127.0.0.1")).thenReturn(null);
+
+        // Act
+        ipRateLimiterService.recordFailedAttempt("127.0.0.1");
+
+        // Assert
+        verify(redisTemplate, never()).expire(anyString(), anyLong(), any());
+        verify(valueOperations, never()).set(anyString(), anyString(), anyLong(), any());
+        verify(redisTemplate, never()).delete(anyString());
+    }
+
+    @Test
     void resetAttempts_deberiaEliminarLaLlaveDeIntentos() {
         // Act
         ipRateLimiterService.resetAttempts("127.0.0.1");

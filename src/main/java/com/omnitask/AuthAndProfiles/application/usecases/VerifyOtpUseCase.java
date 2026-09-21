@@ -1,6 +1,9 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import com.omnitask.AuthAndProfiles.application.services.OtpAttemptService;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
+import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
+import com.omnitask.AuthAndProfiles.domain.exceptions.TooManyAttemptsException;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.VerifyOtpRequestDTO;
@@ -18,6 +21,7 @@ public class VerifyOtpUseCase {
 
     private final UserRepository userRepository;
     private final TokenRedisRepository tokenRedisRepository;
+    private final OtpAttemptService otpAttemptService;
 
     public void execute(VerifyOtpRequestDTO request) {
         String otpKey = "otp:" + request.getEmail();
@@ -26,18 +30,28 @@ public class VerifyOtpUseCase {
         if (storedOtp == null || !storedOtp.equals(request.getOtpCode())) {
             log.warn("[SECURITY] [SEC-AUTH-04] Intento fallido de verificación OTP para el correo: {}",
                     request.getEmail());
-            throw new RuntimeException("Código OTP inválido o expirado");
+
+            if (otpAttemptService.registerFailureAndCheckLimit(request.getEmail())) {
+                // Se alcanzó el máximo de intentos: el código actual se invalida y hay que pedir uno nuevo.
+                tokenRedisRepository.deleteRefreshToken(otpKey);
+                log.warn("[SECURITY] [SEC-AUTH-06] OTP invalidado por exceso de intentos para el correo: {}",
+                        request.getEmail());
+                throw new TooManyAttemptsException(
+                        "Demasiados intentos fallidos. Solicita un nuevo código de verificación.");
+            }
+            throw new IllegalArgumentException("Código OTP inválido o expirado");
         }
 
         User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+                .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
 
         user.setEmailVerified(true);
         user.setAccountStatus(AccountStatus.ACTIVE);
         user.setUpdatedAt(LocalDateTime.now());
 
         userRepository.save(user);
-        tokenRedisRepository.saveRefreshToken(otpKey, "", 1);
+        tokenRedisRepository.deleteRefreshToken(otpKey);
+        otpAttemptService.reset(request.getEmail());
 
         log.info("[AUDIT] [SEC-AUTH-02] Correo verificado exitosamente mediante OTP para: {}", user.getEmail());
     }

@@ -53,6 +53,15 @@ public class JwtService {
         return extractClaim(token, Claims::getSubject);
     }
 
+    /** Rol del token de acceso; los refresh tokens no llevan claim de rol y devuelven null. */
+    public String extractRole(String token) {
+        return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
+    public long getAccessTokenExpirationMillis() {
+        return jwtExpiration;
+    }
+
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);

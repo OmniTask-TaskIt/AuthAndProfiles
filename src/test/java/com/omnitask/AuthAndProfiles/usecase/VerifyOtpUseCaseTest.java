@@ -1,8 +1,10 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import com.omnitask.AuthAndProfiles.application.services.OtpAttemptService;
 import com.omnitask.AuthAndProfiles.application.usecases.VerifyOtpUseCase;
-
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
+import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
+import com.omnitask.AuthAndProfiles.domain.exceptions.TooManyAttemptsException;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.VerifyOtpRequestDTO;
@@ -27,6 +29,8 @@ class VerifyOtpUseCaseTest {
     private UserRepository userRepository;
     @Mock
     private TokenRedisRepository tokenRedisRepository;
+    @Mock
+    private OtpAttemptService otpAttemptService;
 
     @InjectMocks
     private VerifyOtpUseCase verifyOtpUseCase;
@@ -41,7 +45,7 @@ class VerifyOtpUseCaseTest {
     }
 
     @Test
-    void execute_deberiaActivarLaCuenta_cuandoElOtpEsValido() {
+    void execute_deberiaActivarLaCuentaEInvalidarElOtp_cuandoElOtpEsValido() {
         // Arrange
         User user = User.builder().email("test@gmail.com").build();
         when(tokenRedisRepository.getRefreshToken("otp:test@gmail.com")).thenReturn("123456");
@@ -54,29 +58,62 @@ class VerifyOtpUseCaseTest {
         assertThat(user.isEmailVerified()).isTrue();
         assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
         verify(userRepository).save(user);
-        verify(tokenRedisRepository).saveRefreshToken("otp:test@gmail.com", "", 1);
+        verify(tokenRedisRepository).deleteRefreshToken("otp:test@gmail.com");
+        verify(otpAttemptService).reset("test@gmail.com");
     }
 
     @Test
     void execute_deberiaLanzarExcepcion_cuandoElOtpNoCoincide() {
         // Arrange
         when(tokenRedisRepository.getRefreshToken("otp:test@gmail.com")).thenReturn("000000");
+        when(otpAttemptService.registerFailureAndCheckLimit("test@gmail.com")).thenReturn(false);
 
         // Act & Assert
         assertThatThrownBy(() -> verifyOtpUseCase.execute(request))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Código OTP inválido");
         verify(userRepository, never()).save(any());
+        verify(tokenRedisRepository, never()).deleteRefreshToken(anyString());
     }
 
     @Test
     void execute_deberiaLanzarExcepcion_cuandoElOtpHaExpirado() {
         // Arrange
         when(tokenRedisRepository.getRefreshToken("otp:test@gmail.com")).thenReturn(null);
+        when(otpAttemptService.registerFailureAndCheckLimit("test@gmail.com")).thenReturn(false);
 
         // Act & Assert
         assertThatThrownBy(() -> verifyOtpUseCase.execute(request))
-                .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Código OTP inválido");
+    }
+
+    @Test
+    void execute_deberiaInvalidarElOtpYBloquear_cuandoSeAlcanzaElMaximoDeIntentos() {
+        // Arrange
+        when(tokenRedisRepository.getRefreshToken("otp:test@gmail.com")).thenReturn("000000");
+        when(otpAttemptService.registerFailureAndCheckLimit("test@gmail.com")).thenReturn(true);
+
+        // Act & Assert
+        assertThatThrownBy(() -> verifyOtpUseCase.execute(request))
+                .isInstanceOf(TooManyAttemptsException.class)
+                .hasMessageContaining("Solicita un nuevo código");
+        verify(tokenRedisRepository).deleteRefreshToken("otp:test@gmail.com");
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_deberiaLanzarExcepcion_cuandoElUsuarioNoExiste() {
+        // Arrange
+        when(tokenRedisRepository.getRefreshToken("otp:test@gmail.com")).thenReturn("123456");
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThatThrownBy(() -> verifyOtpUseCase.execute(request))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("Usuario no encontrado");
+        verify(userRepository, never()).save(any());
+        verify(tokenRedisRepository, never()).deleteRefreshToken(anyString());
+        verify(otpAttemptService, never()).reset(anyString());
     }
 }

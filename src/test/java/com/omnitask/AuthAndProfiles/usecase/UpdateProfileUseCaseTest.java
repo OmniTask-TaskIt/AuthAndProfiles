@@ -92,4 +92,57 @@ class UpdateProfileUseCaseTest {
                 .hasMessageContaining("vacío");
         verify(azureBlobService, never()).uploadFile(any());
     }
+
+    @Test
+    void updateProfile_deberiaActualizarTodosLosCampos_cuandoTodosSeProveen() {
+        // Arrange
+        Profile existente = Profile.builder().userId("user-1").build();
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(existente));
+        when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        Profile result = updateProfileUseCase.updateProfile("user-1", "descripción", "https://blob/foto.png",
+                "Medellín", List.of("electricidad"));
+
+        // Assert
+        assertThat(result.getDescription()).isEqualTo("descripción");
+        assertThat(result.getPhotoUrl()).isEqualTo("https://blob/foto.png");
+        assertThat(result.getLocationCoverage()).isEqualTo("Medellín");
+        assertThat(result.getCategories()).containsExactly("electricidad");
+        assertThat(result.getUpdatedAt()).isNotNull();
+    }
+
+    @Test
+    void updateProfile_noDeberiaModificarNingunCampo_cuandoTodosLosParametrosSonNulos() {
+        // Arrange
+        Profile existente = Profile.builder().userId("user-1").description("vieja").photoUrl("foto-vieja")
+                .locationCoverage("Cali").categories(List.of("pintura")).build();
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(existente));
+        when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        Profile result = updateProfileUseCase.updateProfile("user-1", null, null, null, null);
+
+        // Assert
+        assertThat(result.getDescription()).isEqualTo("vieja");
+        assertThat(result.getPhotoUrl()).isEqualTo("foto-vieja");
+        assertThat(result.getLocationCoverage()).isEqualTo("Cali");
+        assertThat(result.getCategories()).containsExactly("pintura");
+        assertThat(result.getUpdatedAt()).isNotNull();
+        verify(profileRepository).save(existente);
+    }
+
+    @Test
+    void uploadDocument_deberiaLanzarExcepcion_cuandoElPerfilNoExiste() {
+        // Arrange
+        MultipartFile file = new MockMultipartFile("file", "cedula.png", "image/png", new byte[] { 1, 2, 3 });
+        when(azureBlobService.uploadFile(file)).thenReturn("https://blob/cedula.png");
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThatThrownBy(() -> updateProfileUseCase.uploadDocument("user-1", file))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Perfil no encontrado para este usuario");
+        verify(profileRepository, never()).save(any());
+    }
 }

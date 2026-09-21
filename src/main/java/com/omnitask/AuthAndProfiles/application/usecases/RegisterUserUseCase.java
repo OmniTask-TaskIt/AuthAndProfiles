@@ -1,7 +1,9 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import com.omnitask.AuthAndProfiles.application.services.OtpGenerator;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
+import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.domain.models.User;
@@ -17,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Random;
 
 @Slf4j
 @Service
@@ -29,6 +30,7 @@ public class RegisterUserUseCase {
     private final TokenRedisRepository tokenRedisRepository;
     private final ResendEmailService resendEmailService;
     private final ProfileRepository profileRepository;
+    private final OtpGenerator otpGenerator;
 
     public User execute(RegisterRequestDTO request) {
         log.info("[AUDIT] [SEC-AUTH-01] Iniciando proceso de registro para email: {}", request.getEmail());
@@ -39,12 +41,17 @@ public class RegisterUserUseCase {
             throw new IllegalArgumentException("El usuario ya está registrado.");
         }
 
+        if (request.getRole() == Role.ADMIN) {
+            log.warn("[SECURITY] Intento de registro con rol ADMIN para el correo: {}", request.getEmail());
+            throw new IllegalArgumentException("Solo se permite registrarse como SEEKER o PROVIDER.");
+        }
+
         if (!request.isAcceptedTerms()) {
             log.warn("[SECURITY] Intento de registro sin aceptar términos para el correo: {}", request.getEmail());
             throw new IllegalArgumentException("Es obligatorio aceptar los términos y condiciones.");
         }
 
-        String otpCode = String.format("%06d", new Random().nextInt(999999));
+        String otpCode = otpGenerator.generate();
 
         User newUser = User.builder()
                 .email(request.getEmail())
@@ -74,7 +81,7 @@ public class RegisterUserUseCase {
                 .photoUrl("")
                 .documentUrl("")
                 .categories(new ArrayList<>())
-                .identityVerificationStatus(VerificationStatus.PENDING_REVIEW)
+                .identityVerificationStatus(VerificationStatus.UNVERIFIED)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();

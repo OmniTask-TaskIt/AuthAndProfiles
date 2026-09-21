@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
 import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
@@ -18,9 +19,9 @@ public class DeleteAccountUseCase {
 
     public void execute(String email) {
         var user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+                .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
 
-        tokenRedisRepository.saveRefreshToken(email, "", 1);
+        tokenRedisRepository.deleteRefreshToken(email);
         profileRepository.findByUserId(user.getId()).ifPresent(profileRepository::delete);
         userRepository.delete(user);
 

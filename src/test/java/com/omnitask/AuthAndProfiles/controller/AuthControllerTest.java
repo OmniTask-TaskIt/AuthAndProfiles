@@ -141,4 +141,92 @@ class AuthControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(resendOtpUseCase).execute("test@gmail.com");
     }
+
+    @Test
+    void verifyOtp_deberiaRetornar200YDelegarEnElUseCase() {
+        // Arrange
+        VerifyOtpRequestDTO request = new VerifyOtpRequestDTO();
+        request.setEmail("test@gmail.com");
+        request.setOtpCode("123456");
+
+        // Act
+        ResponseEntity<?> response = authController.verifyOtp(request);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Map<?, ?>) response.getBody()).get("message")).asString().contains("Correo verificado");
+        verify(verifyOtpUseCase).execute(request);
+    }
+
+    @Test
+    void refresh_deberiaRetornarLaRespuestaDelUseCase() {
+        // Arrange
+        RefreshTokenRequestDTO request = new RefreshTokenRequestDTO();
+        request.setEmail("test@gmail.com");
+        request.setRefreshToken("refresh");
+        AuthResponseDTO expected = new AuthResponseDTO("nuevo-access", "refresh", "Token renovado con éxito",
+                "test@gmail.com");
+        when(refreshTokenUseCase.execute(request)).thenReturn(expected);
+
+        // Act
+        ResponseEntity<AuthResponseDTO> response = authController.refresh(request);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(expected);
+    }
+
+    @Test
+    void googleLogin_deberiaRetornarLaRespuestaDelUseCase_cuandoElTokenEsValido() {
+        // Arrange
+        AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
+        when(googleLoginUseCase.execute("google-token")).thenReturn(expected);
+
+        // Act
+        ResponseEntity<AuthResponseDTO> response = authController.googleLogin(Map.of("token", "google-token"));
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(expected);
+    }
+
+    @Test
+    void googleLogin_deberiaLanzarExcepcion_cuandoElTokenEstaEnBlanco() {
+        // Arrange
+        Map<String, String> body = Map.of("token", "   ");
+
+        // Act & Assert
+        assertThatThrownBy(() -> authController.googleLogin(body))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("El token de Google es obligatorio");
+        verify(googleLoginUseCase, never()).execute(anyString());
+    }
+
+    @Test
+    void resendOtp_deberiaRetornar400_cuandoElEmailEstaEnBlanco() {
+        // Arrange
+        Map<String, String> body = Map.of("email", "  ");
+
+        // Act
+        ResponseEntity<?> response = authController.resendOtp(body);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(((Map<?, ?>) response.getBody()).get("error")).isEqualTo("El campo email es obligatorio");
+        verify(resendOtpUseCase, never()).execute(anyString());
+    }
+
+    @Test
+    void resendOtp_deberiaRetornar400ConElMensaje_cuandoElUseCaseFalla() {
+        // Arrange
+        Map<String, String> body = Map.of("email", "test@gmail.com");
+        doThrow(new RuntimeException("Usuario no encontrado")).when(resendOtpUseCase).execute("test@gmail.com");
+
+        // Act
+        ResponseEntity<?> response = authController.resendOtp(body);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(((Map<?, ?>) response.getBody()).get("error")).isEqualTo("Usuario no encontrado");
+    }
 }

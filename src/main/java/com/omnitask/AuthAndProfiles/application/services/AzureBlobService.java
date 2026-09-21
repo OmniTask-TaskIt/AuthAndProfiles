@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.services;
 
+import com.omnitask.AuthAndProfiles.domain.exceptions.ExternalServiceException;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobServiceClient;
@@ -37,7 +38,7 @@ public class AzureBlobService {
             return blobClient.getBlobUrl();
 
         } catch (IOException e) {
-            throw new RuntimeException("Error al subir el archivo a Azure Blob Storage: " + e.getMessage());
+            throw new ExternalServiceException("Error al subir el archivo a Azure Blob Storage: " + e.getMessage());
         }
     }
 }

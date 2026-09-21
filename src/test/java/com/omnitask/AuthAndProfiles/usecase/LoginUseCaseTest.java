@@ -1,5 +1,8 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
+import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
+import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
 import com.omnitask.AuthAndProfiles.application.usecases.LoginUseCase;
 
 import com.omnitask.AuthAndProfiles.application.services.IpRateLimiterService;
@@ -91,12 +94,9 @@ class LoginUseCaseTest {
         assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Credenciales inválidas");
-        // NOTA: cuando el usuario no existe, LoginUseCase registra el intento fallido DOS veces:
-        // una dentro del orElseGet() (porque user queda null) y otra en el if de abajo
-        // (porque user == null también entra ahí). No es un typo del test: así se comporta hoy
-        // el código real. Vale la pena revisarlo en producción porque puede estar duplicando
-        // el conteo de intentos fallidos y bloqueando IPs con la mitad de los intentos reales.
-        verify(ipRateLimiterService, times(2)).recordFailedAttempt("127.0.0.1");
+        // Un usuario inexistente cuenta como UN solo intento fallido (antes se contaba dos veces).
+        verify(ipRateLimiterService, times(1)).recordFailedAttempt("127.0.0.1");
+        verify(passwordEncoder, never()).matches(any(), any());
     }
 
     @Test
@@ -111,5 +111,54 @@ class LoginUseCaseTest {
         assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("verificar tu cuenta");
+    }
+
+    @Test
+    void execute_deberiaRegistrarIntentoFallido_cuandoLaContrasenaEsIncorrecta() {
+        // Arrange
+        User user = User.builder().email("test@gmail.com").passwordHash("hashed").role(Role.SEEKER)
+                .emailVerified(true).build();
+        when(ipRateLimiterService.isBlocked("127.0.0.1")).thenReturn(false);
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(false);
+
+        // Act & Assert
+        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+                .isInstanceOf(AuthenticationFailedException.class)
+                .hasMessageContaining("Credenciales inválidas");
+        verify(ipRateLimiterService, times(1)).recordFailedAttempt("127.0.0.1");
+        verify(jwtService, never()).generateAccessToken(any(), any());
+    }
+
+    @Test
+    void execute_deberiaLanzarExcepcion_cuandoLaCuentaEstaSuspendida() {
+        // Arrange
+        User user = User.builder().email("test@gmail.com").passwordHash("hashed").role(Role.SEEKER)
+                .emailVerified(true).accountStatus(AccountStatus.SUSPENDED).build();
+        when(ipRateLimiterService.isBlocked("127.0.0.1")).thenReturn(false);
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(true);
+
+        // Act & Assert
+        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+                .isInstanceOf(AccountRestrictedException.class)
+                .hasMessageContaining("suspendida");
+        verify(jwtService, never()).generateAccessToken(any(), any());
+        verify(tokenRedisRepository, never()).saveRefreshToken(any(), any(), anyLong());
+    }
+
+    @Test
+    void execute_deberiaLanzarExcepcion_cuandoLaCuentaEstaBloqueada() {
+        // Arrange
+        User user = User.builder().email("test@gmail.com").passwordHash("hashed").role(Role.SEEKER)
+                .emailVerified(true).accountStatus(AccountStatus.BLOCKED).build();
+        when(ipRateLimiterService.isBlocked("127.0.0.1")).thenReturn(false);
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(true);
+
+        // Act & Assert
+        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+                .isInstanceOf(AccountRestrictedException.class)
+                .hasMessageContaining("bloqueada");
     }
 }

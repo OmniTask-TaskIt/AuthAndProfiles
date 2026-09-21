@@ -1,6 +1,7 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
 import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,8 @@ public class UploadPhotoUseCase {
         String photoUrl = azureBlobService.uploadFile(file);
 
         Profile profile = profileRepository.findByUserId(userId)
-                .orElseGet(() -> Profile.builder().userId(userId).createdAt(LocalDateTime.now()).build());
+                .orElseGet(() -> Profile.builder().userId(userId).identityVerificationStatus(VerificationStatus.UNVERIFIED)
+                        .createdAt(LocalDateTime.now()).build());
 
         profile.setPhotoUrl(photoUrl);
         profile.setUpdatedAt(LocalDateTime.now());

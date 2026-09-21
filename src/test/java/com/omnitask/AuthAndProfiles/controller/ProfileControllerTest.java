@@ -117,4 +117,42 @@ class ProfileControllerTest {
         assertThat(response.getBody()).hasSize(1);
         assertThat(response.getBody().get(0).getFullName()).isEqualTo("Robin");
     }
+
+    @Test
+    void uploadDocument_deberiaDelegarEnElUseCaseYRetornarElPerfilActualizado() {
+        // Arrange
+        MultipartFile file = new MockMultipartFile("file", "cedula.png", "image/png", new byte[] { 1 });
+        Profile updated = Profile.builder().userId("user-1").documentUrl("https://blob/cedula.png")
+                .identityVerificationStatus(VerificationStatus.PENDING_REVIEW).build();
+        when(updateProfileUseCase.uploadDocument("user-1", file)).thenReturn(updated);
+
+        // Act
+        ResponseEntity<ProfileResponseDTO> response = profileController.uploadDocument("user-1", file);
+
+        // Assert
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getUserId()).isEqualTo("user-1");
+        assertThat(response.getBody().getIdentityVerificationStatus()).isEqualTo(VerificationStatus.PENDING_REVIEW);
+    }
+
+    @Test
+    void updateProfile_deberiaDelegarEnElUseCaseConTodosLosParametros() {
+        // Arrange
+        List<String> categories = List.of("plomería", "electricidad");
+        Profile updated = Profile.builder().userId("user-1").description("nueva").photoUrl("https://blob/foto.png")
+                .locationCoverage("Bogotá").categories(categories).build();
+        when(updateProfileUseCase.updateProfile("user-1", "nueva", "https://blob/foto.png", "Bogotá", categories))
+                .thenReturn(updated);
+
+        // Act
+        ResponseEntity<ProfileResponseDTO> response = profileController.updateProfile("user-1", "nueva",
+                "https://blob/foto.png", "Bogotá", categories);
+
+        // Assert
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getDescription()).isEqualTo("nueva");
+        assertThat(response.getBody().getPhotoUrl()).isEqualTo("https://blob/foto.png");
+        assertThat(response.getBody().getCategories()).isEqualTo(categories);
+        verify(updateProfileUseCase).updateProfile("user-1", "nueva", "https://blob/foto.png", "Bogotá", categories);
+    }
 }

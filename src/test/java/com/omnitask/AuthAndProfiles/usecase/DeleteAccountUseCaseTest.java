@@ -43,7 +43,7 @@ class DeleteAccountUseCaseTest {
         deleteAccountUseCase.execute("test@gmail.com");
 
         // Assert
-        verify(tokenRedisRepository).saveRefreshToken("test@gmail.com", "", 1);
+        verify(tokenRedisRepository).deleteRefreshToken("test@gmail.com");
         verify(profileRepository).delete(profile);
         verify(userRepository).delete(user);
     }

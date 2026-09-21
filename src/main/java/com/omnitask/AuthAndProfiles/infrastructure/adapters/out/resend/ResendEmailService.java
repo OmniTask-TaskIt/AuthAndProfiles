@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.infrastructure.adapters.out.resend;
 
+import com.omnitask.AuthAndProfiles.domain.exceptions.ExternalServiceException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -47,7 +48,7 @@ public class ResendEmailService {
 
         } catch (Exception e) {
             log.error("[ERROR] No se pudo enviar el correo a través de Resend: {}", e.getMessage());
-            throw new RuntimeException("Error al enviar el correo de verificación");
+            throw new ExternalServiceException("Error al enviar el correo de verificación");
         }
     }
 }

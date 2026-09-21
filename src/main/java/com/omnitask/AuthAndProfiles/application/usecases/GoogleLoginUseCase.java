@@ -8,6 +8,7 @@ import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.domain.models.User;
+import com.omnitask.AuthAndProfiles.domain.policies.AccountAccessPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
@@ -67,7 +68,7 @@ public class GoogleLoginUseCase {
                     .photoUrl("")
                     .documentUrl("")
                     .categories(new ArrayList<>())
-                    .identityVerificationStatus(VerificationStatus.PENDING_REVIEW)
+                    .identityVerificationStatus(VerificationStatus.UNVERIFIED)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
                     .build();
@@ -77,6 +78,8 @@ public class GoogleLoginUseCase {
 
             return savedUser;
         });
+
+        AccountAccessPolicy.ensureNotRestricted(user);
 
         String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getRole().name());
         String refreshToken = jwtService.generateRefreshToken(user.getEmail());

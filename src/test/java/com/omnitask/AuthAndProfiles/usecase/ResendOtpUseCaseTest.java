@@ -1,5 +1,7 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import com.omnitask.AuthAndProfiles.application.services.OtpAttemptService;
+import com.omnitask.AuthAndProfiles.application.services.OtpGenerator;
 import com.omnitask.AuthAndProfiles.application.usecases.ResendOtpUseCase;
 
 import com.omnitask.AuthAndProfiles.domain.models.User;
@@ -27,6 +29,10 @@ class ResendOtpUseCaseTest {
     private TokenRedisRepository tokenRedisRepository;
     @Mock
     private ResendEmailService resendEmailService;
+    @Mock
+    private OtpGenerator otpGenerator;
+    @Mock
+    private OtpAttemptService otpAttemptService;
 
     @InjectMocks
     private ResendOtpUseCase resendOtpUseCase;
@@ -36,13 +42,15 @@ class ResendOtpUseCaseTest {
         // Arrange
         User user = User.builder().email("test@gmail.com").emailVerified(false).build();
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(otpGenerator.generate()).thenReturn("654321");
 
         // Act
         resendOtpUseCase.execute("test@gmail.com");
 
         // Assert
-        verify(resendEmailService).sendOtpEmail(eq("test@gmail.com"), anyString());
-        verify(tokenRedisRepository).saveRefreshToken(eq("otp:test@gmail.com"), anyString(), eq(600000L));
+        verify(resendEmailService).sendOtpEmail("test@gmail.com", "654321");
+        verify(tokenRedisRepository).saveRefreshToken("otp:test@gmail.com", "654321", 600000L);
+        verify(otpAttemptService).reset("test@gmail.com");
     }
 
     @Test

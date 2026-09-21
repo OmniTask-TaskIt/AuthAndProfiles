@@ -1,5 +1,7 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
+import com.omnitask.AuthAndProfiles.application.services.OtpGenerator;
 import com.omnitask.AuthAndProfiles.application.usecases.RegisterUserUseCase;
 
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
@@ -39,6 +41,8 @@ class RegisterUserUseCaseTest {
     private ResendEmailService resendEmailService;
     @Mock
     private ProfileRepository profileRepository;
+    @Mock
+    private OtpGenerator otpGenerator;
 
     @InjectMocks
     private RegisterUserUseCase registerUserUseCase;
@@ -59,6 +63,7 @@ class RegisterUserUseCaseTest {
     void execute_deberiaCrearUsuarioYPerfilInicial_cuandoElEmailEsNuevo() {
         // Arrange
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.empty());
+        when(otpGenerator.generate()).thenReturn("123456");
         when(passwordEncoder.encode("Password1!")).thenReturn("hashedPassword");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
@@ -72,8 +77,10 @@ class RegisterUserUseCaseTest {
         // Assert
         assertThat(result.getId()).isEqualTo("user-1");
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
-        verify(profileRepository).save(argThat(p -> p.getUserId().equals("user-1") && p.getReputationScore() == 5.0f));
-        verify(resendEmailService).sendOtpEmail(eq("test@gmail.com"), anyString());
+        verify(profileRepository).save(argThat(p -> p.getUserId().equals("user-1") && p.getReputationScore() == 5.0f
+                && p.getIdentityVerificationStatus() == VerificationStatus.UNVERIFIED));
+        verify(resendEmailService).sendOtpEmail("test@gmail.com", "123456");
+        verify(tokenRedisRepository).saveRefreshToken("otp:test@gmail.com", "123456", 600000);
     }
 
     @Test
@@ -99,5 +106,19 @@ class RegisterUserUseCaseTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("términos");
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_deberiaLanzarExcepcion_cuandoSeIntentaRegistrarComoAdmin() {
+        // Arrange
+        request.setRole(Role.ADMIN);
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThatThrownBy(() -> registerUserUseCase.execute(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("SEEKER o PROVIDER");
+        verify(userRepository, never()).save(any());
+        verify(resendEmailService, never()).sendOtpEmail(anyString(), anyString());
     }
 }

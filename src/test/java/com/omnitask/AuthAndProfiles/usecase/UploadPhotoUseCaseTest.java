@@ -13,6 +13,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.mockito.ArgumentCaptor;
+
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,5 +62,27 @@ class UploadPhotoUseCaseTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("vacío");
         verify(azureBlobService, never()).uploadFile(any());
+    }
+
+    @Test
+    void execute_deberiaCrearUnPerfilNuevoConLaFoto_cuandoNoExisteUnoParaElUsuario() {
+        // Arrange
+        MultipartFile file = new MockMultipartFile("file", "foto.png", "image/png", new byte[] { 1, 2, 3 });
+        when(azureBlobService.uploadFile(file)).thenReturn("https://blob/foto.png");
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.empty());
+        when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        String result = uploadPhotoUseCase.execute("user-1", file);
+
+        // Assert
+        assertThat(result).isEqualTo("https://blob/foto.png");
+        ArgumentCaptor<Profile> captor = ArgumentCaptor.forClass(Profile.class);
+        verify(profileRepository).save(captor.capture());
+        Profile saved = captor.getValue();
+        assertThat(saved.getUserId()).isEqualTo("user-1");
+        assertThat(saved.getPhotoUrl()).isEqualTo("https://blob/foto.png");
+        assertThat(saved.getCreatedAt()).isNotNull();
+        assertThat(saved.getUpdatedAt()).isNotNull();
     }
 }

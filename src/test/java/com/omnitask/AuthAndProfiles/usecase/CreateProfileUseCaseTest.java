@@ -74,4 +74,20 @@ class CreateProfileUseCaseTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Usuario no encontrado");
     }
+
+    @Test
+    void execute_deberiaAsignarRolUNASSIGNED_cuandoElUsuarioNoTieneRol() {
+        // Arrange
+        User user = User.builder().id("user-1").name("Robin").role(null).build();
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.empty());
+        when(userRepository.findById("user-1")).thenReturn(Optional.of(user));
+        when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Act
+        Profile result = createProfileUseCase.execute("user-1");
+
+        // Assert
+        assertThat(result.getCurrentRole()).isEqualTo("UNASSIGNED");
+        assertThat(result.getFullName()).isEqualTo("Robin");
+    }
 }

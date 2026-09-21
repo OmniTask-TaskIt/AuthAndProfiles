@@ -2,7 +2,11 @@ package com.omnitask.AuthAndProfiles.application.usecases;
 
 import com.omnitask.AuthAndProfiles.application.services.IpRateLimiterService;
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
+import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
+import com.omnitask.AuthAndProfiles.domain.exceptions.TooManyAttemptsException;
 import com.omnitask.AuthAndProfiles.domain.models.User;
+import com.omnitask.AuthAndProfiles.domain.policies.AccountAccessPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.LoginRequestDTO;
@@ -26,26 +30,26 @@ public class LoginUseCase {
     public AuthResponseDTO execute(LoginRequestDTO request, String clientIp) {
         if (ipRateLimiterService.isBlocked(clientIp)) {
             log.warn("[SECURITY] [SEC-AUTH-06] Acceso denegado. IP bloqueada temporalmente: {}", clientIp);
-            throw new RuntimeException(
+            throw new TooManyAttemptsException(
                     "Demasiados intentos fallidos. Su dirección IP ha sido bloqueada temporalmente por 15 minutos.");
         }
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseGet(() -> {
-                    ipRateLimiterService.recordFailedAttempt(clientIp);
-                    return null;
-                });
+        User user = userRepository.findByEmail(request.getEmail()).orElse(null);
 
+        // Un solo intento fallido por petición, exista o no el usuario (evita contar doble).
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             ipRateLimiterService.recordFailedAttempt(clientIp);
             log.warn("[SECURITY] [SEC-AUTH-04] Intento de acceso fallido para el correo: {} desde IP: {}",
                     request.getEmail(), clientIp);
-            throw new RuntimeException("Credenciales inválidas");
+            throw new AuthenticationFailedException("Credenciales inválidas");
         }
+
+        // Solo se revela el estado de la cuenta cuando las credenciales ya fueron correctas.
+        AccountAccessPolicy.ensureNotRestricted(user);
 
         if (!user.isEmailVerified()) {
             log.warn("[SECURITY] Intento de login sin verificar correo: {}", request.getEmail());
-            throw new RuntimeException(
+            throw new AccountRestrictedException(
                     "Debes verificar tu cuenta con el código OTP enviado a tu correo antes de iniciar sesión.");
         }
 

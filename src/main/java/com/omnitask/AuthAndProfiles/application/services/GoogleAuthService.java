@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.services;
 
+import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -26,9 +27,9 @@ public class GoogleAuthService {
             if (idToken != null) {
                 return idToken.getPayload();
             }
-            throw new RuntimeException("Token de Google inválido o expirado");
+            throw new AuthenticationFailedException("Token de Google inválido o expirado");
         } catch (Exception e) {
-            throw new RuntimeException("Error de seguridad verificando el token de Google: " + e.getMessage());
+            throw new AuthenticationFailedException("Error de seguridad verificando el token de Google: " + e.getMessage());
         }
     }
 }

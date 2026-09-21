@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
 import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
 import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
@@ -23,7 +24,8 @@ public class UpdateProfileUseCase {
     public Profile updateProfile(String userId, String description, String photoUrl, String locationCoverage,
             List<String> categories) {
         Profile profile = profileRepository.findByUserId(userId)
-                .orElseGet(() -> Profile.builder().userId(userId).createdAt(LocalDateTime.now()).build());
+                .orElseGet(() -> Profile.builder().userId(userId).identityVerificationStatus(VerificationStatus.UNVERIFIED)
+                        .createdAt(LocalDateTime.now()).build());
 
         if (description != null)
             profile.setDescription(description);
@@ -46,7 +48,7 @@ public class UpdateProfileUseCase {
         String documentUrl = azureBlobService.uploadFile(file);
 
         Profile profile = profileRepository.findByUserId(userId)
-                .orElseThrow(() -> new RuntimeException("Perfil no encontrado para este usuario"));
+                .orElseThrow(() -> new NotFoundException("Perfil no encontrado para este usuario"));
 
         profile.setDocumentUrl(documentUrl);
         profile.setIdentityVerificationStatus(VerificationStatus.PENDING_REVIEW);

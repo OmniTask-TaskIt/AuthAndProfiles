@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
 import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.domain.models.User;
@@ -22,7 +23,7 @@ public class CreateProfileUseCase {
         return profileRepository.findByUserId(userId).orElseGet(() -> {
 
             User user = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("Usuario no encontrado para crear perfil"));
+                    .orElseThrow(() -> new NotFoundException("Usuario no encontrado para crear perfil"));
 
             Profile newProfile = Profile.builder()
                     .userId(userId)
@@ -33,7 +34,7 @@ public class CreateProfileUseCase {
                     .description("")
                     .locationCoverage("")
                     .categories(new ArrayList<>())
-                    .identityVerificationStatus(VerificationStatus.PENDING_REVIEW)
+                    .identityVerificationStatus(VerificationStatus.UNVERIFIED)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
                     .build();
