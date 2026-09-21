@@ -1,5 +1,9 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import static org.mockito.ArgumentMatchers.eq;
+import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.application.usecases.GoogleLoginUseCase;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
@@ -44,6 +48,8 @@ class GoogleLoginUseCaseTest {
     private JwtService jwtService;
     @Mock
     private TokenRedisRepository tokenRedisRepository;
+    @Mock
+    private EventPublisher eventPublisher;
 
     @InjectMocks
     private GoogleLoginUseCase googleLoginUseCase;
@@ -70,6 +76,7 @@ class GoogleLoginUseCaseTest {
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publish(any(), any(), any());
     }
 
     @Test
@@ -92,6 +99,7 @@ class GoogleLoginUseCaseTest {
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(userRepository).save(argThat((User u) -> u.getAuthProvider() == AuthProvider.GOOGLE && u.isEmailVerified()));
         verify(profileRepository).save(any());
+        verify(eventPublisher).publish(eq(EventType.USER_REGISTERED), any(), any(UserRegisteredEvent.class));
     }
 
     @Test

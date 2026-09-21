@@ -1,5 +1,9 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import java.time.Instant;
+import com.omnitask.AuthAndProfiles.domain.events.SecurityAuditEvent;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.IpRateLimiterService;
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
@@ -26,10 +30,12 @@ public class LoginUseCase {
     private final JwtService jwtService;
     private final TokenRedisRepository tokenRedisRepository;
     private final IpRateLimiterService ipRateLimiterService;
+    private final EventPublisher eventPublisher;
 
     public AuthResponseDTO execute(LoginRequestDTO request, String clientIp) {
         if (ipRateLimiterService.isBlocked(clientIp)) {
             log.warn("[SECURITY] [SEC-AUTH-06] Acceso denegado. IP bloqueada temporalmente: {}", clientIp);
+            audit("LOGIN_BLOCKED", request.getEmail(), clientIp);
             throw new TooManyAttemptsException(
                     "Demasiados intentos fallidos. Su dirección IP ha sido bloqueada temporalmente por 15 minutos.");
         }
@@ -39,6 +45,7 @@ public class LoginUseCase {
         // Un solo intento fallido por petición, exista o no el usuario (evita contar doble).
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             ipRateLimiterService.recordFailedAttempt(clientIp);
+            audit("LOGIN_FAILED", request.getEmail(), clientIp);
             log.warn("[SECURITY] [SEC-AUTH-04] Intento de acceso fallido para el correo: {} desde IP: {}",
                     request.getEmail(), clientIp);
             throw new AuthenticationFailedException("Credenciales inválidas");
@@ -60,8 +67,15 @@ public class LoginUseCase {
 
         tokenRedisRepository.saveRefreshToken(user.getEmail(), refreshToken, 604800000);
 
+        audit("LOGIN_SUCCESS", user.getEmail(), clientIp);
         log.info("[AUTH] [SEC-AUTH-02] Login exitoso para el usuario: {} desde IP: {}", user.getEmail(), clientIp);
 
         return new AuthResponseDTO(accessToken, refreshToken, "Inicio de sesión exitoso", user.getEmail());
+    }
+
+    /** Traza de auditoría (RNF-AUTHPR-6) hacia Security and Audit. */
+    private void audit(String action, String email, String clientIp) {
+        eventPublisher.publish(EventType.SECURITY_AUDIT, email,
+                new SecurityAuditEvent(action, email, null, clientIp, Instant.now()));
     }
 }

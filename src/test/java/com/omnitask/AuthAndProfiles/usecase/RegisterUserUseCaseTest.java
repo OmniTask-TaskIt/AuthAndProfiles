@@ -1,5 +1,8 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.application.services.OtpGenerator;
 import com.omnitask.AuthAndProfiles.application.usecases.RegisterUserUseCase;
@@ -43,6 +46,8 @@ class RegisterUserUseCaseTest {
     private ProfileRepository profileRepository;
     @Mock
     private OtpGenerator otpGenerator;
+    @Mock
+    private EventPublisher eventPublisher;
 
     @InjectMocks
     private RegisterUserUseCase registerUserUseCase;
@@ -81,6 +86,7 @@ class RegisterUserUseCaseTest {
                 && p.getIdentityVerificationStatus() == VerificationStatus.UNVERIFIED));
         verify(resendEmailService).sendOtpEmail("test@gmail.com", "123456");
         verify(tokenRedisRepository).saveRefreshToken("otp:test@gmail.com", "123456", 600000);
+        verify(eventPublisher).publish(eq(EventType.USER_REGISTERED), eq("user-1"), any(UserRegisteredEvent.class));
     }
 
     @Test

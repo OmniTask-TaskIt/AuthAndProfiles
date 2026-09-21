@@ -1,5 +1,8 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import com.omnitask.AuthAndProfiles.domain.events.SecurityAuditEvent;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
@@ -39,6 +42,8 @@ class LoginUseCaseTest {
     private TokenRedisRepository tokenRedisRepository;
     @Mock
     private IpRateLimiterService ipRateLimiterService;
+    @Mock
+    private EventPublisher eventPublisher;
 
     @InjectMocks
     private LoginUseCase loginUseCase;
@@ -70,6 +75,8 @@ class LoginUseCaseTest {
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(tokenRedisRepository).saveRefreshToken("test@gmail.com", "refresh-token", 604800000L);
         verify(ipRateLimiterService).resetAttempts("127.0.0.1");
+        verify(eventPublisher).publish(eq(EventType.SECURITY_AUDIT), eq("test@gmail.com"),
+                argThat((SecurityAuditEvent e) -> e.action().equals("LOGIN_SUCCESS") && "127.0.0.1".equals(e.ipAddress())));
     }
 
     @Test
@@ -82,6 +89,8 @@ class LoginUseCaseTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("bloqueada");
         verify(userRepository, never()).findByEmail(any());
+        verify(eventPublisher).publish(eq(EventType.SECURITY_AUDIT), any(),
+                argThat((SecurityAuditEvent e) -> e.action().equals("LOGIN_BLOCKED")));
     }
 
     @Test
@@ -97,6 +106,8 @@ class LoginUseCaseTest {
         // Un usuario inexistente cuenta como UN solo intento fallido (antes se contaba dos veces).
         verify(ipRateLimiterService, times(1)).recordFailedAttempt("127.0.0.1");
         verify(passwordEncoder, never()).matches(any(), any());
+        verify(eventPublisher).publish(eq(EventType.SECURITY_AUDIT), any(),
+                argThat((SecurityAuditEvent e) -> e.action().equals("LOGIN_FAILED")));
     }
 
     @Test

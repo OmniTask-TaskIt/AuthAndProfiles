@@ -27,8 +27,6 @@ class UpdateProfileUseCaseTest {
 
     @Mock
     private ProfileRepository profileRepository;
-    @Mock
-    private AzureBlobService azureBlobService;
 
     @InjectMocks
     private UpdateProfileUseCase updateProfileUseCase;
@@ -62,35 +60,6 @@ class UpdateProfileUseCaseTest {
         // Assert
         assertThat(result.getUserId()).isEqualTo("user-1");
         assertThat(result.getDescription()).isEqualTo("descripción");
-    }
-
-    @Test
-    void uploadDocument_deberiaSubirElArchivoYMarcarPendienteDeRevision() {
-        // Arrange
-        MultipartFile file = new MockMultipartFile("file", "cedula.png", "image/png", new byte[] { 1, 2, 3 });
-        Profile profile = Profile.builder().userId("user-1").build();
-        when(azureBlobService.uploadFile(file)).thenReturn("https://blob/cedula.png");
-        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
-        when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        // Act
-        Profile result = updateProfileUseCase.uploadDocument("user-1", file);
-
-        // Assert
-        assertThat(result.getDocumentUrl()).isEqualTo("https://blob/cedula.png");
-        assertThat(result.getIdentityVerificationStatus()).isEqualTo(VerificationStatus.PENDING_REVIEW);
-    }
-
-    @Test
-    void uploadDocument_deberiaLanzarExcepcion_cuandoElArchivoEstaVacio() {
-        // Arrange
-        MultipartFile fileVacio = new MockMultipartFile("file", "vacio.png", "image/png", new byte[0]);
-
-        // Act & Assert
-        assertThatThrownBy(() -> updateProfileUseCase.uploadDocument("user-1", fileVacio))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("vacío");
-        verify(azureBlobService, never()).uploadFile(any());
     }
 
     @Test
@@ -132,17 +101,4 @@ class UpdateProfileUseCaseTest {
         verify(profileRepository).save(existente);
     }
 
-    @Test
-    void uploadDocument_deberiaLanzarExcepcion_cuandoElPerfilNoExiste() {
-        // Arrange
-        MultipartFile file = new MockMultipartFile("file", "cedula.png", "image/png", new byte[] { 1, 2, 3 });
-        when(azureBlobService.uploadFile(file)).thenReturn("https://blob/cedula.png");
-        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.empty());
-
-        // Act & Assert
-        assertThatThrownBy(() -> updateProfileUseCase.uploadDocument("user-1", file))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Perfil no encontrado para este usuario");
-        verify(profileRepository, never()).save(any());
-    }
 }

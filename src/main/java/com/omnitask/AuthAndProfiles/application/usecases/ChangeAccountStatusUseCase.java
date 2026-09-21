@@ -1,5 +1,9 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import java.time.Instant;
+import com.omnitask.AuthAndProfiles.domain.events.AccountStatusChangedEvent;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
@@ -28,6 +32,7 @@ public class ChangeAccountStatusUseCase {
     private final TokenRedisRepository tokenRedisRepository;
     private final AccessRevocationRepository accessRevocationRepository;
     private final JwtService jwtService;
+    private final EventPublisher eventPublisher;
 
     public User execute(String userId, AccountStatus newStatus, String reason, String actorEmail) {
         if (newStatus == AccountStatus.PENDING_VERIFICATION) {
@@ -40,6 +45,8 @@ public class ChangeAccountStatusUseCase {
         if (user.getRole() == Role.ADMIN) {
             throw new IllegalArgumentException("No se puede modificar el estado de una cuenta de administrador.");
         }
+
+        AccountStatus previousStatus = user.getAccountStatus();
 
         if (newStatus.isRestricted()) {
             if (reason == null || reason.isBlank()) {
@@ -60,6 +67,11 @@ public class ChangeAccountStatusUseCase {
 
         user.setUpdatedAt(LocalDateTime.now());
         User saved = userRepository.save(user);
+
+        eventPublisher.publish(EventType.ACCOUNT_STATUS_CHANGED, saved.getId(),
+                new AccountStatusChangedEvent(saved.getId(), saved.getEmail(),
+                        previousStatus == null ? null : previousStatus.name(), saved.getAccountStatus().name(),
+                        saved.getBlockReason(), actorEmail, Instant.now()));
 
         log.warn("[AUDIT-SECURITY] Estado de cuenta de {} cambiado a {} por el administrador {}. Motivo: {}",
                 saved.getEmail(), saved.getAccountStatus(), actorEmail, reason);

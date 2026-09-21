@@ -33,8 +33,20 @@ public class Profile {
     private Float reputationScore;
     private int totalReviews;
 
+    /** Obsoleto: antes guardaba la URL pública del documento. Ya no se escribe; ver documentBlobName. */
     private String documentUrl;
+
+    /** Nombre del blob en el contenedor PRIVADO de documentos (nunca una URL). */
+    private String documentBlobName;
+    private String documentType;
+    private String documentContentType;
+    private long documentSizeBytes;
+    private LocalDateTime documentSubmittedAt;
+
     private VerificationStatus identityVerificationStatus;
+    /** Motivo del rechazo cuando el estado es REJECTED. */
+    private String verificationReason;
+    private LocalDateTime verificationReviewedAt;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

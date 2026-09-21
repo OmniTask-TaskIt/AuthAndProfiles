@@ -1,5 +1,9 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import java.time.Instant;
+import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.OtpGenerator;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
@@ -31,6 +35,7 @@ public class RegisterUserUseCase {
     private final ResendEmailService resendEmailService;
     private final ProfileRepository profileRepository;
     private final OtpGenerator otpGenerator;
+    private final EventPublisher eventPublisher;
 
     public User execute(RegisterRequestDTO request) {
         log.info("[AUDIT] [SEC-AUTH-01] Iniciando proceso de registro para email: {}", request.getEmail());
@@ -87,6 +92,10 @@ public class RegisterUserUseCase {
                 .build();
 
         profileRepository.save(initialProfile);
+
+        eventPublisher.publish(EventType.USER_REGISTERED, savedUser.getId(),
+                new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail(), savedUser.getName(),
+                        savedUser.getRole().name(), AuthProvider.LOCAL.name(), Instant.now()));
 
         resendEmailService.sendOtpEmail(savedUser.getEmail(), otpCode);
 

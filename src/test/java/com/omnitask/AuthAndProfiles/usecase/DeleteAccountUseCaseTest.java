@@ -1,5 +1,9 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import com.omnitask.AuthAndProfiles.domain.events.AccountDeletedEvent;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
+import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
 import com.omnitask.AuthAndProfiles.application.usecases.DeleteAccountUseCase;
 
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
@@ -27,6 +31,10 @@ class DeleteAccountUseCaseTest {
     private ProfileRepository profileRepository;
     @Mock
     private TokenRedisRepository tokenRedisRepository;
+    @Mock
+    private AzureBlobService azureBlobService;
+    @Mock
+    private EventPublisher eventPublisher;
 
     @InjectMocks
     private DeleteAccountUseCase deleteAccountUseCase;
@@ -45,6 +53,40 @@ class DeleteAccountUseCaseTest {
         // Assert
         verify(tokenRedisRepository).deleteRefreshToken("test@gmail.com");
         verify(profileRepository).delete(profile);
+        verify(userRepository).delete(user);
+        verify(azureBlobService, never()).deleteIdentityDocument(any());
+        verify(eventPublisher).publish(eq(EventType.ACCOUNT_DELETED), eq("user-1"),
+                argThat((AccountDeletedEvent e) -> e.email().equals("test@gmail.com")));
+    }
+
+    @Test
+    void execute_deberiaEliminarElDocumentoDeIdentidadDelBlob_cuandoElPerfilTieneUno() {
+        // Arrange
+        User user = User.builder().id("user-1").email("test@gmail.com").build();
+        Profile profile = Profile.builder().userId("user-1").documentBlobName("user-1/abc.pdf").build();
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
+
+        // Act
+        deleteAccountUseCase.execute("test@gmail.com");
+
+        // Assert
+        verify(azureBlobService).deleteIdentityDocument("user-1/abc.pdf");
+        verify(profileRepository).delete(profile);
+    }
+
+    @Test
+    void execute_noDeberiaFallar_cuandoElUsuarioNoTienePerfil() {
+        // Arrange
+        User user = User.builder().id("user-1").email("test@gmail.com").build();
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.empty());
+
+        // Act
+        deleteAccountUseCase.execute("test@gmail.com");
+
+        // Assert
+        verify(profileRepository, never()).delete(any());
         verify(userRepository).delete(user);
     }
 

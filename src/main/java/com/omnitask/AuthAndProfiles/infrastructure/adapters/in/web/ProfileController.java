@@ -1,5 +1,7 @@
 package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web;
 
+import com.omnitask.AuthAndProfiles.domain.enums.DocumentType;
+import com.omnitask.AuthAndProfiles.application.usecases.SubmitIdentityDocumentUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.DeleteAccountUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.GetProfileUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.SearchProfileUseCase;
@@ -28,6 +30,7 @@ public class ProfileController {
     private final GetProfileUseCase getProfileUseCase;
     private final UploadPhotoUseCase uploadPhotoUseCase;
     private final UpdateProfileUseCase updateProfileUseCase;
+    private final SubmitIdentityDocumentUseCase submitIdentityDocumentUseCase;
     private final SwitchRoleUseCase switchRoleUseCase;
     private final DeleteAccountUseCase deleteAccountUseCase;
     private final SearchProfileUseCase searchProfileUseCase;
@@ -48,8 +51,9 @@ public class ProfileController {
     @PreAuthorize("@profileSecurity.isOwner(#userId, authentication)")
     @PostMapping("/{userId}/document")
     public ResponseEntity<ProfileResponseDTO> uploadDocument(@PathVariable String userId,
-            @RequestParam("file") MultipartFile file) {
-        Profile updatedProfile = updateProfileUseCase.uploadDocument(userId, file);
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "documentType", defaultValue = "CEDULA") DocumentType documentType) {
+        Profile updatedProfile = submitIdentityDocumentUseCase.execute(userId, documentType, file);
         return ResponseEntity.ok(ProfileResponseDTO.fromProfile(updatedProfile));
     }
 

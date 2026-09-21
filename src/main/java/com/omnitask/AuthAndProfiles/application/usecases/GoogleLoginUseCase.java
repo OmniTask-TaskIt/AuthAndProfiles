@@ -1,5 +1,9 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
+import java.time.Instant;
+import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.GoogleAuthService;
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
@@ -30,6 +34,7 @@ public class GoogleLoginUseCase {
     private final GoogleAuthService googleAuthService;
     private final JwtService jwtService;
     private final TokenRedisRepository tokenRedisRepository;
+    private final EventPublisher eventPublisher;
 
     public AuthResponseDTO execute(String googleToken) {
         var payload = googleAuthService.verifyToken(googleToken);
@@ -74,6 +79,9 @@ public class GoogleLoginUseCase {
                     .build();
 
             profileRepository.save(initialProfile);
+            eventPublisher.publish(EventType.USER_REGISTERED, savedUser.getId(),
+                    new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail(), savedUser.getName(),
+                            savedUser.getRole().name(), AuthProvider.GOOGLE.name(), Instant.now()));
             log.info("[AUDIT] Perfil inicial creado para el usuario de Google: {}", savedUser.getId());
 
             return savedUser;

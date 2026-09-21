@@ -1,5 +1,7 @@
 package com.omnitask.AuthAndProfiles.controller;
 
+import com.omnitask.AuthAndProfiles.domain.enums.DocumentType;
+import com.omnitask.AuthAndProfiles.application.usecases.SubmitIdentityDocumentUseCase;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.ProfileController;
 
 import com.omnitask.AuthAndProfiles.application.usecases.*;
@@ -32,6 +34,8 @@ class ProfileControllerTest {
     private UploadPhotoUseCase uploadPhotoUseCase;
     @Mock
     private UpdateProfileUseCase updateProfileUseCase;
+    @Mock
+    private SubmitIdentityDocumentUseCase submitIdentityDocumentUseCase;
     @Mock
     private SwitchRoleUseCase switchRoleUseCase;
     @Mock
@@ -122,12 +126,13 @@ class ProfileControllerTest {
     void uploadDocument_deberiaDelegarEnElUseCaseYRetornarElPerfilActualizado() {
         // Arrange
         MultipartFile file = new MockMultipartFile("file", "cedula.png", "image/png", new byte[] { 1 });
-        Profile updated = Profile.builder().userId("user-1").documentUrl("https://blob/cedula.png")
+        Profile updated = Profile.builder().userId("user-1").documentBlobName("user-1/abc.png")
                 .identityVerificationStatus(VerificationStatus.PENDING_REVIEW).build();
-        when(updateProfileUseCase.uploadDocument("user-1", file)).thenReturn(updated);
+        when(submitIdentityDocumentUseCase.execute("user-1", DocumentType.PASSPORT, file)).thenReturn(updated);
 
         // Act
-        ResponseEntity<ProfileResponseDTO> response = profileController.uploadDocument("user-1", file);
+        ResponseEntity<ProfileResponseDTO> response = profileController.uploadDocument("user-1", file,
+                DocumentType.PASSPORT);
 
         // Assert
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();

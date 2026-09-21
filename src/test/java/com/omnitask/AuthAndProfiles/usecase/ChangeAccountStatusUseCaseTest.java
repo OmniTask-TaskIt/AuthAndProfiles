@@ -1,5 +1,11 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
+import com.omnitask.AuthAndProfiles.domain.events.AccountStatusChangedEvent;
+import com.omnitask.AuthAndProfiles.domain.events.EventType;
+import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
 import com.omnitask.AuthAndProfiles.application.usecases.ChangeAccountStatusUseCase;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
@@ -36,6 +42,8 @@ class ChangeAccountStatusUseCaseTest {
     private AccessRevocationRepository accessRevocationRepository;
     @Mock
     private JwtService jwtService;
+    @Mock
+    private EventPublisher eventPublisher;
 
     @InjectMocks
     private ChangeAccountStatusUseCase changeAccountStatusUseCase;
@@ -61,6 +69,10 @@ class ChangeAccountStatusUseCaseTest {
         verify(tokenRedisRepository).deleteRefreshToken("test@gmail.com");
         verify(accessRevocationRepository).revokeUser("test@gmail.com", 900000L);
         verify(accessRevocationRepository, never()).clearUserRevocation(anyString());
+        verify(eventPublisher).publish(eq(EventType.ACCOUNT_STATUS_CHANGED), eq("user-1"),
+                argThat((AccountStatusChangedEvent e) -> e.previousStatus().equals("ACTIVE")
+                        && e.newStatus().equals("SUSPENDED") && e.reason().equals("Fraude")
+                        && e.changedBy().equals("admin@omnitask.com")));
     }
 
     @Test
@@ -122,6 +134,7 @@ class ChangeAccountStatusUseCaseTest {
                 .hasMessageContaining("motivo");
         verify(userRepository, never()).save(user);
         verify(accessRevocationRepository, never()).revokeUser(anyString(), anyLong());
+        verify(eventPublisher, never()).publish(any(), any(), any());
     }
 
     @Test
@@ -151,5 +164,20 @@ class ChangeAccountStatusUseCaseTest {
         assertThatThrownBy(() -> changeAccountStatusUseCase.execute("nada", AccountStatus.SUSPENDED, "x", "a"))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("Usuario no encontrado");
+    }
+
+    @Test
+    void execute_deberiaPublicarEstadoPrevioNulo_cuandoLaCuentaNoTeniaEstado() {
+        User user = User.builder().id("user-1").email("test@gmail.com").role(Role.PROVIDER).emailVerified(true)
+                .build();
+        when(userRepository.findById("user-1")).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+        when(jwtService.getAccessTokenExpirationMillis()).thenReturn(900000L);
+
+        changeAccountStatusUseCase.execute("user-1", AccountStatus.BLOCKED, "Fraude", "admin@omnitask.com");
+
+        verify(eventPublisher).publish(eq(EventType.ACCOUNT_STATUS_CHANGED), eq("user-1"),
+                argThat((AccountStatusChangedEvent e) -> e.previousStatus() == null
+                        && e.newStatus().equals("BLOCKED")));
     }
 }
