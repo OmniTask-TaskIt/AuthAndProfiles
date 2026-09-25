@@ -57,6 +57,18 @@ class SearchProfileUseCaseTest {
     }
 
     @Test
+    void execute_deberiaBuscarPorNombre_cuandoLaConsultaEsNula() {
+        // query == null: cubre la rama corta del "&&" (nunca se evalúa contains("@")), distinta del caso
+        // "Robin" (query != null pero sin arroba) que ya cubre el test de abajo.
+        when(userRepository.findByNameContainingIgnoreCase(null)).thenReturn(List.of());
+        when(profileRepository.findByUserIdIn(List.of())).thenReturn(List.of());
+
+        List<Profile> result = searchProfileUseCase.execute(null);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     void execute_deberiaBuscarPorNombre_cuandoLaConsultaNoEsUnEmail() {
         // Arrange
         User user = User.builder().id("user-1").name("Robin").build();

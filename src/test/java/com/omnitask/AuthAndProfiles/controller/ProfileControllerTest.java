@@ -1,5 +1,14 @@
 package com.omnitask.AuthAndProfiles.controller;
 
+import java.time.LocalDateTime;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.http.HttpStatus;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ReportResponseDTO;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.CreateReportRequestDTO;
+import com.omnitask.AuthAndProfiles.domain.models.Report;
+import com.omnitask.AuthAndProfiles.domain.enums.ReportStatus;
+import com.omnitask.AuthAndProfiles.application.usecases.CreateReportUseCase;
 import com.omnitask.AuthAndProfiles.domain.enums.DocumentType;
 import com.omnitask.AuthAndProfiles.application.usecases.SubmitIdentityDocumentUseCase;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.ProfileController;
@@ -36,6 +45,8 @@ class ProfileControllerTest {
     private UpdateProfileUseCase updateProfileUseCase;
     @Mock
     private SubmitIdentityDocumentUseCase submitIdentityDocumentUseCase;
+    @Mock
+    private CreateReportUseCase createReportUseCase;
     @Mock
     private SwitchRoleUseCase switchRoleUseCase;
     @Mock
@@ -159,5 +170,22 @@ class ProfileControllerTest {
         assertThat(response.getBody().getPhotoUrl()).isEqualTo("https://blob/foto.png");
         assertThat(response.getBody().getCategories()).isEqualTo(categories);
         verify(updateProfileUseCase).updateProfile("user-1", "nueva", "https://blob/foto.png", "Bogotá", categories);
+    }
+
+    @Test
+    void reportProfile_deberiaUsarElEmailAutenticadoYRetornar201() {
+        CreateReportRequestDTO request = new CreateReportRequestDTO();
+        request.setReason("Fraude");
+        request.setComment("detalle");
+        Authentication auth = new UsernamePasswordAuthenticationToken("test@gmail.com", null, List.of());
+        Report saved = Report.builder().id("report-1").reporterId("user-1").revieweeId("user-2").reason("Fraude")
+                .status(ReportStatus.OPEN).createdAt(LocalDateTime.now()).build();
+        when(createReportUseCase.execute("test@gmail.com", "user-2", "Fraude", "detalle")).thenReturn(saved);
+
+        ResponseEntity<ReportResponseDTO> response = profileController.reportProfile("user-2", request, auth);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody().id()).isEqualTo("report-1");
+        assertThat(response.getBody().status()).isEqualTo(ReportStatus.OPEN);
     }
 }

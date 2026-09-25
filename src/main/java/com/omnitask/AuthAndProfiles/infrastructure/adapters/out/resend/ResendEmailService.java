@@ -19,11 +19,19 @@ public class ResendEmailService {
     @Value("${resend.email.from}")
     private String emailFrom;
 
+    @Value("${app.email.enabled:true}")
+    private boolean emailEnabled;
+
     private final RestClient restClient = RestClient.builder()
             .baseUrl("https://api.resend.com")
             .build();
 
     public void sendOtpEmail(String toEmail, String otpCode) {
+        if (!emailEnabled) {
+            log.info("[SEC-AUTH] [RESEND] Envío de correo deshabilitado (app.email.enabled=false); OTP para {} disponible en Redis",
+                    toEmail);
+            return;
+        }
         try {
             Map<String, Object> requestBody = Map.of(
                     "from", emailFrom,

@@ -69,6 +69,22 @@ No incluye el archivo ni una URL. Para verlo, ver la sección 5.
 { "userId": "…", "email": "…", "deletedAt": "…" }
 ```
 
+**ReviewCreated**: se registró una calificación (ver sección 6).
+```json
+{ "reviewId": "…", "taskId": "…", "reviewerId": "…", "revieweeId": "…", "rating": 1-5, "createdAt": "…" }
+```
+
+**ReputationUpdated**: cambió el promedio de reputación de un usuario (tras cada `ReviewCreated`).
+```json
+{ "userId": "…", "reputationScore": 4.33, "totalReviews": 12, "updatedAt": "…" }
+```
+
+**UserReported**: un usuario reportó a otro (ver sección 6). Es el evento que Security and Audit debe consumir
+para su cola de moderación; este MS resuelve el reporte solo con un endpoint manual mientras HITL no exista.
+```json
+{ "reportId": "…", "reporterId": "…", "revieweeId": "…", "reason": "…", "comment": "…|null", "createdAt": "…" }
+```
+
 ### `taskit.auth.audit` (clave = correo del usuario)
 
 **SecurityAudit**
@@ -127,7 +143,25 @@ Auth & Profile ◄── IdentityVerificationResolved
   (usa la misma lógica que el evento).
 - Un usuario con documento en `PENDING_REVIEW` no puede subir otro; uno `VERIFIED` tampoco.
 
-## 6. Configuración de Azure Event Hubs
+## 6. Reputación, reseñas y reportes
+
+- `POST /api/v1/reviews` (autenticado): registra la calificación (1-5) que el usuario deja a otro por una tarea
+  (`taskId`, `revieweeId`, `rating`, `comment` opcional). Un mismo usuario solo puede calificar una misma tarea una
+  vez (409 si repite). Tras guardar, recalcula la reputación completa del perfil calificado (promedio de todas sus
+  reseñas, nunca editable a mano) y publica `ReviewCreated` y `ReputationUpdated`.
+  **Pendiente:** no valida todavía contra Task Service que la tarea exista, esté completada o que el reviewer haya
+  participado en ella; eso requiere que ese microservicio exista y defina cómo consultarlo o qué evento publica al
+  completar una tarea.
+- `GET /api/v1/reviews/user/{userId}` (autenticado): reseñas recibidas por un usuario, paginado, más recientes primero.
+- `POST /api/v1/profiles/{userId}/reports` (autenticado): reporta un perfil por comportamiento inapropiado o fraude
+  (`reason`, `comment` opcional). Un mismo usuario no puede tener dos reportes abiertos contra el mismo perfil.
+  Si el perfil acumula `REPORTS_AUTO_SUSPEND_THRESHOLD` reportes abiertos (por defecto 3), se suspende preventivamente
+  y se dispara `AccountStatusChanged` con `changedBy = "system:auto-report-threshold"`.
+- `GET /api/v1/admin/reports?status=&page=&size=` y `PATCH /api/v1/admin/reports/{reportId}/status` (solo ADMIN):
+  listar y resolver reportes a mano (`RESOLVED` o `DISMISSED`) mientras Security and Audit HITL no los consuma
+  directamente del topic y aplique sus propias decisiones vía `AccountSanctionApplied`.
+
+## 7. Configuración de Azure Event Hubs
 
 1. Crear un **namespace** de Event Hubs, nivel **Standard** (el Basic no soporta Kafka).
 2. Crear estos **Event Hubs** (equivalen a topics; Event Hubs no los crea solo):
@@ -148,7 +182,7 @@ KAFKA_CONSUMER_GROUP=auth-profile-service
 Si Kafka no está disponible el servicio arranca igual: los eventos quedan en el outbox y se envían después.
 `KAFKA_ENABLED=false` apaga por completo el envío y el consumo (útil para pruebas sin broker).
 
-## 7. Desarrollo local
+## 8. Desarrollo local
 
 ```
 docker compose up -d        # Kafka (localhost:9092) y Redis (localhost:6379)
@@ -157,7 +191,7 @@ En el `.env`: `REDIS_HOST=localhost`, `REDIS_PORT=6379`, `REDIS_SSL=false`. Kafk
 Para probar el consumo, publicar a mano en `taskit.security.events` (por ejemplo con `kafka-console-producer.sh`
 dentro del contenedor) un sobre como los de la sección 4.
 
-## 8. Guía para el equipo de Security and Audit HITL
+## 9. Guía para el equipo de Security and Audit HITL
 
 - **Consumir** `taskit.auth.events` (filtrar `eventType = IdentityDocumentSubmitted`) y `taskit.auth.audit`.
   Deduplicar por `eventId`.

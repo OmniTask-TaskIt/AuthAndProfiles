@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.controller;
 
+import com.omnitask.AuthAndProfiles.application.usecases.GithubLoginUseCase;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.AuthController;
 
 import com.omnitask.AuthAndProfiles.application.usecases.*;
@@ -33,6 +34,8 @@ class AuthControllerTest {
     private RefreshTokenUseCase refreshTokenUseCase;
     @Mock
     private GoogleLoginUseCase googleLoginUseCase;
+    @Mock
+    private GithubLoginUseCase githubLoginUseCase;
     @Mock
     private ResendOtpUseCase resendOtpUseCase;
     @Mock
@@ -228,5 +231,43 @@ class AuthControllerTest {
         // Assert
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(((Map<?, ?>) response.getBody()).get("error")).isEqualTo("Usuario no encontrado");
+    }
+
+    @Test
+    void githubLogin_deberiaRetornarLaRespuestaDelUseCase_cuandoElCodigoEsValido() {
+        // Arrange
+        AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
+        when(githubLoginUseCase.execute("auth-code")).thenReturn(expected);
+
+        // Act
+        ResponseEntity<AuthResponseDTO> response = authController.githubLogin(Map.of("code", "auth-code"));
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(expected);
+    }
+
+    @Test
+    void githubLogin_deberiaLanzarExcepcion_cuandoNoSeEnviaElCodigo() {
+        // Arrange
+        Map<String, String> body = Map.of();
+
+        // Act & Assert
+        assertThatThrownBy(() -> authController.githubLogin(body))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("código de autorización de GitHub");
+        verify(githubLoginUseCase, never()).execute(anyString());
+    }
+
+    @Test
+    void githubLogin_deberiaLanzarExcepcion_cuandoElCodigoEstaEnBlanco() {
+        // Arrange
+        Map<String, String> body = Map.of("code", "   ");
+
+        // Act & Assert
+        assertThatThrownBy(() -> authController.githubLogin(body))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("código de autorización de GitHub");
+        verify(githubLoginUseCase, never()).execute(anyString());
     }
 }

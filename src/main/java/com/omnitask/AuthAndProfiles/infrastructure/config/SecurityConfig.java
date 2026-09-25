@@ -54,7 +54,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/verify-otp",
                                 "/api/v1/auth/resend-otp",
                                 "/api/v1/auth/refresh",
-                                "/api/v1/auth/google")
+                                "/api/v1/auth/google",
+                                "/api/v1/auth/github")
                         .permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")

@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web;
 
+import com.omnitask.AuthAndProfiles.application.usecases.GithubLoginUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.GoogleLoginUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.LoginUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.RefreshTokenUseCase;
@@ -27,6 +28,7 @@ public class AuthController {
     private final LoginUseCase loginUseCase;
     private final RefreshTokenUseCase refreshTokenUseCase;
     private final GoogleLoginUseCase googleLoginUseCase;
+    private final GithubLoginUseCase githubLoginUseCase;
     private final ResendOtpUseCase resendOtpUseCase;
 
     @PostMapping("/register")
@@ -76,6 +78,16 @@ public class AuthController {
             throw new IllegalArgumentException("El token de Google es obligatorio");
         }
         AuthResponseDTO response = googleLoginUseCase.execute(token);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/github")
+    public ResponseEntity<AuthResponseDTO> githubLogin(@RequestBody Map<String, String> request) {
+        String code = request.get("code");
+        if (code == null || code.isBlank()) {
+            throw new IllegalArgumentException("El código de autorización de GitHub es obligatorio");
+        }
+        AuthResponseDTO response = githubLoginUseCase.execute(code);
         return ResponseEntity.ok(response);
     }
 

@@ -2,6 +2,7 @@ package com.omnitask.AuthAndProfiles.controller;
 
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
+import com.omnitask.AuthAndProfiles.domain.exceptions.ConflictException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.ExternalServiceException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.TooManyAttemptsException;
@@ -38,6 +39,8 @@ class GlobalExceptionHandlerTest {
                 HttpStatus.UNAUTHORIZED, "spring");
         assertResponse(handler.handleAccountRestricted(new AccountRestrictedException("suspendida")),
                 HttpStatus.FORBIDDEN, "suspendida");
+        assertResponse(handler.handleConflict(new ConflictException("ya calificaste")),
+                HttpStatus.CONFLICT, "ya calificaste");
         assertResponse(handler.handleTooManyAttempts(new TooManyAttemptsException("muchos")),
                 HttpStatus.TOO_MANY_REQUESTS, "muchos");
         assertResponse(handler.handleExternalService(new ExternalServiceException("resend caído")),

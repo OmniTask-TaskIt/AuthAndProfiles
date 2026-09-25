@@ -1,5 +1,12 @@
 package com.omnitask.AuthAndProfiles.controller;
 
+import java.time.LocalDateTime;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ResolveReportRequestDTO;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ReportResponseDTO;
+import com.omnitask.AuthAndProfiles.domain.models.Report;
+import com.omnitask.AuthAndProfiles.domain.enums.ReportStatus;
+import com.omnitask.AuthAndProfiles.application.usecases.ResolveReportUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.ListReportsUseCase;
 import java.time.Instant;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ResolveVerificationRequestDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ProfileResponseDTO;
@@ -44,6 +51,10 @@ class AdminControllerTest {
     private GetIdentityDocumentAccessUseCase getIdentityDocumentAccessUseCase;
     @Mock
     private ResolveIdentityVerificationUseCase resolveIdentityVerificationUseCase;
+    @Mock
+    private ListReportsUseCase listReportsUseCase;
+    @Mock
+    private ResolveReportUseCase resolveReportUseCase;
 
     @InjectMocks
     private AdminController adminController;
@@ -109,5 +120,34 @@ class AdminControllerTest {
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody().getIdentityVerificationStatus()).isEqualTo(VerificationStatus.REJECTED);
         assertThat(response.getBody().getUserId()).isEqualTo("user-1");
+    }
+
+    @Test
+    void listReports_deberiaDelegarConLosFiltrosYRetornar200() {
+        PageResponseDTO<ReportResponseDTO> page = new PageResponseDTO<>(List.of(), 0, 20, 0, 0);
+        when(listReportsUseCase.execute(ReportStatus.OPEN, 0, 20)).thenReturn(page);
+
+        ResponseEntity<PageResponseDTO<ReportResponseDTO>> response = adminController.listReports(ReportStatus.OPEN,
+                0, 20);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody()).isSameAs(page);
+    }
+
+    @Test
+    void resolveReport_deberiaUsarAlAdministradorAutenticadoComoResolutor() {
+        ResolveReportRequestDTO body = new ResolveReportRequestDTO();
+        body.setStatus(ReportStatus.RESOLVED);
+        body.setNote("Se verificó");
+        Authentication auth = new UsernamePasswordAuthenticationToken("admin@omnitask.com", null, List.of());
+        Report resolved = Report.builder().id("report-1").status(ReportStatus.RESOLVED)
+                .resolvedBy("admin@omnitask.com").resolvedAt(LocalDateTime.now()).build();
+        when(resolveReportUseCase.execute("report-1", ReportStatus.RESOLVED, "Se verificó", "admin@omnitask.com"))
+                .thenReturn(resolved);
+
+        ResponseEntity<ReportResponseDTO> response = adminController.resolveReport("report-1", body, auth);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().status()).isEqualTo(ReportStatus.RESOLVED);
     }
 }

@@ -35,6 +35,7 @@ class ResendEmailServiceTest {
         resendEmailService = new ResendEmailService();
         ReflectionTestUtils.setField(resendEmailService, "apiKey", "re_test_key");
         ReflectionTestUtils.setField(resendEmailService, "emailFrom", "no-reply@taskit.com");
+        ReflectionTestUtils.setField(resendEmailService, "emailEnabled", true);
 
         RestClient.Builder builder = RestClient.builder().baseUrl("https://api.resend.com");
         server = MockRestServiceServer.bindTo(builder).build();
@@ -57,6 +58,17 @@ class ResendEmailServiceTest {
         assertThatCode(() -> resendEmailService.sendOtpEmail("destino@gmail.com", "123456"))
                 .doesNotThrowAnyException();
         server.verify();
+    }
+
+    @Test
+    void sendOtpEmail_noDeberiaLlamarAResend_cuandoEmailEnabledEsFalse() {
+        // Arrange
+        ReflectionTestUtils.setField(resendEmailService, "emailEnabled", false);
+
+        // Act & Assert
+        assertThatCode(() -> resendEmailService.sendOtpEmail("destino@gmail.com", "123456"))
+                .doesNotThrowAnyException();
+        server.verify(); // no se registró ninguna expectativa: pasa solo si no se hizo ninguna petición
     }
 
     @Test

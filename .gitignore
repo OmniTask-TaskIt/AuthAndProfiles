@@ -19,6 +19,10 @@ target/
 *.iml
 *.ipr
 
+### load-tests ###
+load-tests/k6
+load-tests/load-test-summary.json
+
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/

@@ -2,6 +2,7 @@ package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.exceptions;
 
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
+import com.omnitask.AuthAndProfiles.domain.exceptions.ConflictException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.ExternalServiceException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.TooManyAttemptsException;
@@ -49,6 +50,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
         return buildErrorResponse(HttpStatus.FORBIDDEN, "Acceso denegado",
                 "No tienes permisos para realizar esta acción.");
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleConflict(ConflictException ex) {
+        return buildErrorResponse(HttpStatus.CONFLICT, "Conflicto", ex.getMessage());
     }
 
     @ExceptionHandler(TooManyAttemptsException.class)

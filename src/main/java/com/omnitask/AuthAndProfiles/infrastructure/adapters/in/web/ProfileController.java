@@ -1,5 +1,9 @@
 package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web;
 
+import jakarta.validation.Valid;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ReportResponseDTO;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.CreateReportRequestDTO;
+import com.omnitask.AuthAndProfiles.application.usecases.CreateReportUseCase;
 import com.omnitask.AuthAndProfiles.domain.enums.DocumentType;
 import com.omnitask.AuthAndProfiles.application.usecases.SubmitIdentityDocumentUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.DeleteAccountUseCase;
@@ -13,8 +17,10 @@ import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ProfileResponseDTO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -31,6 +37,7 @@ public class ProfileController {
     private final UploadPhotoUseCase uploadPhotoUseCase;
     private final UpdateProfileUseCase updateProfileUseCase;
     private final SubmitIdentityDocumentUseCase submitIdentityDocumentUseCase;
+    private final CreateReportUseCase createReportUseCase;
     private final SwitchRoleUseCase switchRoleUseCase;
     private final DeleteAccountUseCase deleteAccountUseCase;
     private final SearchProfileUseCase searchProfileUseCase;
@@ -99,4 +106,15 @@ public class ProfileController {
         return ResponseEntity.ok(responseList);
     }
 
+    /** Reportar un perfil por comportamiento inapropiado o fraude (RF-AUTHPR-9). */
+    @PostMapping("/{userId}/reports")
+    public ResponseEntity<ReportResponseDTO> reportProfile(
+            @PathVariable String userId,
+            @Valid @RequestBody CreateReportRequestDTO request,
+            Authentication authentication) {
+        var report = createReportUseCase.execute(authentication.getName(), userId, request.getReason(),
+                request.getComment());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ReportResponseDTO.fromReport(report));
+    }
 }

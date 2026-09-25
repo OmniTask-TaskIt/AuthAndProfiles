@@ -7,7 +7,10 @@ public enum EventType {
     IDENTITY_VERIFICATION_UPDATED("IdentityVerificationUpdated", Topics.AUTH_EVENTS),
     ACCOUNT_STATUS_CHANGED("AccountStatusChanged", Topics.AUTH_EVENTS),
     ACCOUNT_DELETED("AccountDeleted", Topics.AUTH_EVENTS),
-    SECURITY_AUDIT("SecurityAudit", Topics.AUTH_AUDIT);
+    SECURITY_AUDIT("SecurityAudit", Topics.AUTH_AUDIT),
+    REVIEW_CREATED("ReviewCreated", Topics.AUTH_EVENTS),
+    REPUTATION_UPDATED("ReputationUpdated", Topics.AUTH_EVENTS),
+    USER_REPORTED("UserReported", Topics.AUTH_EVENTS);
 
     private final String eventName;
     private final String topic;

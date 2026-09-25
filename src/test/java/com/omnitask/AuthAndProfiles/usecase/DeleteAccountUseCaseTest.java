@@ -76,6 +76,21 @@ class DeleteAccountUseCaseTest {
     }
 
     @Test
+    void execute_noDeberiaLlamarAlBlob_cuandoElBlobNameEstaEnBlancoPeroNoEsNulo() {
+        // documentBlobName = "   " (no null): cubre la rama isBlank() del "&&", distinta de la rama
+        // blobName == null (primer test) y de la rama "con valor" (segundo test).
+        User user = User.builder().id("user-1").email("test@gmail.com").build();
+        Profile profile = Profile.builder().userId("user-1").documentBlobName("   ").build();
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
+
+        deleteAccountUseCase.execute("test@gmail.com");
+
+        verify(azureBlobService, never()).deleteIdentityDocument(any());
+        verify(profileRepository).delete(profile);
+    }
+
+    @Test
     void execute_noDeberiaFallar_cuandoElUsuarioNoTienePerfil() {
         // Arrange
         User user = User.builder().id("user-1").email("test@gmail.com").build();

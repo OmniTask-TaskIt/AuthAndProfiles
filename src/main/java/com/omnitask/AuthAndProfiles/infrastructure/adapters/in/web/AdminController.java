@@ -1,5 +1,10 @@
 package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web;
 
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ResolveReportRequestDTO;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ReportResponseDTO;
+import com.omnitask.AuthAndProfiles.domain.enums.ReportStatus;
+import com.omnitask.AuthAndProfiles.application.usecases.ResolveReportUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.ListReportsUseCase;
 import org.springframework.web.bind.annotation.PostMapping;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ResolveVerificationRequestDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ProfileResponseDTO;
@@ -38,6 +43,8 @@ public class AdminController {
     private final ChangeAccountStatusUseCase changeAccountStatusUseCase;
     private final GetIdentityDocumentAccessUseCase getIdentityDocumentAccessUseCase;
     private final ResolveIdentityVerificationUseCase resolveIdentityVerificationUseCase;
+    private final ListReportsUseCase listReportsUseCase;
+    private final ResolveReportUseCase resolveReportUseCase;
 
     @GetMapping("/users")
     public ResponseEntity<PageResponseDTO<AdminUserDTO>> listUsers(
@@ -81,5 +88,24 @@ public class AdminController {
         Profile profile = resolveIdentityVerificationUseCase.execute(userId, request.getDecision(),
                 request.getReason(), authentication.getName());
         return ResponseEntity.ok(ProfileResponseDTO.fromProfile(profile));
+    }
+
+    /** Reportes de usuarios, mientras Security and Audit HITL no los consuma directamente de Kafka. */
+    @GetMapping("/reports")
+    public ResponseEntity<PageResponseDTO<ReportResponseDTO>> listReports(
+            @RequestParam(required = false) ReportStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(listReportsUseCase.execute(status, page, size));
+    }
+
+    @PatchMapping("/reports/{reportId}/status")
+    public ResponseEntity<ReportResponseDTO> resolveReport(
+            @PathVariable String reportId,
+            @Valid @RequestBody ResolveReportRequestDTO request,
+            Authentication authentication) {
+        var report = resolveReportUseCase.execute(reportId, request.getStatus(), request.getNote(),
+                authentication.getName());
+        return ResponseEntity.ok(ReportResponseDTO.fromReport(report));
     }
 }
