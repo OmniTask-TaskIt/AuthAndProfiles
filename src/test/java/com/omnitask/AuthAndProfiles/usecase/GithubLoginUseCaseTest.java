@@ -69,7 +69,7 @@ class GithubLoginUseCaseTest {
         when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
 
         // Act
-        AuthResponseDTO response = githubLoginUseCase.execute("auth-code");
+        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", true);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -91,7 +91,7 @@ class GithubLoginUseCaseTest {
         when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
 
         // Act
-        AuthResponseDTO response = githubLoginUseCase.execute("auth-code");
+        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", true);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -112,7 +112,7 @@ class GithubLoginUseCaseTest {
         when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
 
         // Act
-        githubLoginUseCase.execute("auth-code");
+        githubLoginUseCase.execute("auth-code", true);
 
         // Assert
         verify(userRepository).save(argThat((User u) -> u.getName().equals("solo-login")));
@@ -127,7 +127,7 @@ class GithubLoginUseCaseTest {
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
 
         // Act & Assert
-        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code"))
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true))
                 .isInstanceOf(AccountRestrictedException.class)
                 .hasMessageContaining("suspendida");
         verify(jwtService, never()).generateAccessToken(any(), any());
@@ -140,7 +140,7 @@ class GithubLoginUseCaseTest {
         stubExchange(null, "Robin", "robin");
 
         // Act & Assert
-        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code"))
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true))
                 .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("correo verificado");
         verify(userRepository, never()).findByEmail(any());
@@ -152,7 +152,7 @@ class GithubLoginUseCaseTest {
         // que ya cubre el test de arriba.
         stubExchange("", "Robin", "robin");
 
-        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code"))
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true))
                 .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("correo verificado");
         verify(userRepository, never()).findByEmail(any());
@@ -168,8 +168,54 @@ class GithubLoginUseCaseTest {
         when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
         when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
 
-        githubLoginUseCase.execute("auth-code");
+        githubLoginUseCase.execute("auth-code", true);
 
         verify(userRepository).save(argThat((User u) -> u.getName().equals("solo-login-2")));
+    }
+
+    @Test
+    void execute_deberiaRegistrarLaAceptacionDeTerminos_cuandoSeCreaUnUsuarioNuevo() {
+        stubExchange("nuevo@gmail.com", "Nuevo Usuario", "login-x");
+        when(userRepository.findByEmail("nuevo@gmail.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId("user-nuevo");
+            return u;
+        });
+        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
+        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+
+        githubLoginUseCase.execute("auth-code", true);
+
+        verify(userRepository).save(argThat((User u) -> u.isTermsAccepted()
+                && u.getTermsAcceptedAt() != null && "1.0".equals(u.getTermsVersion())));
+    }
+
+    @Test
+    void execute_deberiaLanzarExcepcion_cuandoUnUsuarioNuevoNoAceptaLosTerminos() {
+        stubExchange("nuevo@gmail.com", "Nuevo Usuario", "login-x");
+        when(userRepository.findByEmail("nuevo@gmail.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("términos y condiciones");
+        verify(userRepository, never()).save(any());
+        verify(profileRepository, never()).save(any());
+        verify(eventPublisher, never()).publish(any(), any(), any());
+        verify(jwtService, never()).generateAccessToken(any(), any());
+    }
+
+    @Test
+    void execute_noDeberiaExigirTerminos_cuandoElUsuarioDeGithubYaExiste() {
+        User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER).build();
+        stubExchange("test@gmail.com", "Robin", "login-x");
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(jwtService.generateAccessToken("test@gmail.com", "SEEKER")).thenReturn("access-token");
+        when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
+
+        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", false);
+
+        assertThat(response.getAccessToken()).isEqualTo("access-token");
+        verify(userRepository, never()).save(any());
     }
 }

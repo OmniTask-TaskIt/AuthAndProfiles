@@ -71,7 +71,7 @@ class GoogleLoginUseCaseTest {
         when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
 
         // Act
-        AuthResponseDTO response = googleLoginUseCase.execute("google-token");
+        AuthResponseDTO response = googleLoginUseCase.execute("google-token", true);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -93,7 +93,7 @@ class GoogleLoginUseCaseTest {
         when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
 
         // Act
-        AuthResponseDTO response = googleLoginUseCase.execute("google-token");
+        AuthResponseDTO response = googleLoginUseCase.execute("google-token", true);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -111,10 +111,56 @@ class GoogleLoginUseCaseTest {
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
 
         // Act & Assert
-        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token"))
+        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token", true))
                 .isInstanceOf(AccountRestrictedException.class)
                 .hasMessageContaining("suspendida");
         verify(jwtService, never()).generateAccessToken(any(), any());
         verify(tokenRedisRepository, never()).saveRefreshToken(any(), any(), anyLong());
+    }
+
+    @Test
+    void execute_deberiaRegistrarLaAceptacionDeTerminos_cuandoSeCreaUnUsuarioNuevo() {
+        when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("nuevo@gmail.com", "Nuevo Usuario"));
+        when(userRepository.findByEmail("nuevo@gmail.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId("user-nuevo");
+            return u;
+        });
+        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
+        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+
+        googleLoginUseCase.execute("google-token", true);
+
+        verify(userRepository).save(argThat((User u) -> u.isTermsAccepted()
+                && u.getTermsAcceptedAt() != null && "1.0".equals(u.getTermsVersion())));
+    }
+
+    @Test
+    void execute_deberiaLanzarExcepcion_cuandoUnUsuarioNuevoNoAceptaLosTerminos() {
+        when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("nuevo@gmail.com", "Nuevo Usuario"));
+        when(userRepository.findByEmail("nuevo@gmail.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("términos y condiciones");
+        verify(userRepository, never()).save(any());
+        verify(profileRepository, never()).save(any());
+        verify(eventPublisher, never()).publish(any(), any(), any());
+        verify(jwtService, never()).generateAccessToken(any(), any());
+    }
+
+    @Test
+    void execute_noDeberiaExigirTerminos_cuandoElUsuarioDeGoogleYaExiste() {
+        User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER).build();
+        when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("test@gmail.com", "Robin"));
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(jwtService.generateAccessToken("test@gmail.com", "SEEKER")).thenReturn("access-token");
+        when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
+
+        AuthResponseDTO response = googleLoginUseCase.execute("google-token", false);
+
+        assertThat(response.getAccessToken()).isEqualTo("access-token");
+        verify(userRepository, never()).save(any());
     }
 }

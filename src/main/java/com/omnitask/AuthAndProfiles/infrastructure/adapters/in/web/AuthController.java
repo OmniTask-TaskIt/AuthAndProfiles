@@ -77,7 +77,7 @@ public class AuthController {
         if (token == null || token.isBlank()) {
             throw new IllegalArgumentException("El token de Google es obligatorio");
         }
-        AuthResponseDTO response = googleLoginUseCase.execute(token);
+        AuthResponseDTO response = googleLoginUseCase.execute(token, Boolean.parseBoolean(request.get("acceptedTerms")));
         return ResponseEntity.ok(response);
     }
 
@@ -87,7 +87,7 @@ public class AuthController {
         if (code == null || code.isBlank()) {
             throw new IllegalArgumentException("El código de autorización de GitHub es obligatorio");
         }
-        AuthResponseDTO response = githubLoginUseCase.execute(code);
+        AuthResponseDTO response = githubLoginUseCase.execute(code, Boolean.parseBoolean(request.get("acceptedTerms")));
         return ResponseEntity.ok(response);
     }
 

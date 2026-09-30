@@ -18,6 +18,8 @@ import com.omnitask.AuthAndProfiles.application.usecases.ResolveIdentityVerifica
 import com.omnitask.AuthAndProfiles.application.usecases.GetIdentityDocumentAccessUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.ChangeAccountStatusUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.ListUsersUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.ListPendingVerificationsUseCase;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AdminReportDTO;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.models.User;
@@ -55,6 +57,8 @@ class AdminControllerTest {
     private ListReportsUseCase listReportsUseCase;
     @Mock
     private ResolveReportUseCase resolveReportUseCase;
+    @Mock
+    private ListPendingVerificationsUseCase listPendingVerificationsUseCase;
 
     @InjectMocks
     private AdminController adminController;
@@ -124,11 +128,23 @@ class AdminControllerTest {
 
     @Test
     void listReports_deberiaDelegarConLosFiltrosYRetornar200() {
-        PageResponseDTO<ReportResponseDTO> page = new PageResponseDTO<>(List.of(), 0, 20, 0, 0);
+        PageResponseDTO<AdminReportDTO> page = new PageResponseDTO<>(List.of(), 0, 20, 0, 0);
         when(listReportsUseCase.execute(ReportStatus.OPEN, 0, 20)).thenReturn(page);
 
-        ResponseEntity<PageResponseDTO<ReportResponseDTO>> response = adminController.listReports(ReportStatus.OPEN,
+        ResponseEntity<PageResponseDTO<AdminReportDTO>> response = adminController.listReports(ReportStatus.OPEN,
                 0, 20);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody()).isSameAs(page);
+    }
+
+    @Test
+    void listPendingVerifications_deberiaDelegarConLosFiltrosYRetornar200() {
+        PageResponseDTO<ProfileResponseDTO> page = new PageResponseDTO<>(List.of(), 0, 20, 0, 0);
+        when(listPendingVerificationsUseCase.execute(VerificationStatus.PENDING_REVIEW, 0, 20)).thenReturn(page);
+
+        ResponseEntity<PageResponseDTO<ProfileResponseDTO>> response = adminController
+                .listPendingVerifications(VerificationStatus.PENDING_REVIEW, 0, 20);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isSameAs(page);

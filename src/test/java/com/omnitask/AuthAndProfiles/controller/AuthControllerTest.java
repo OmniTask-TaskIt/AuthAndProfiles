@@ -183,10 +183,10 @@ class AuthControllerTest {
     void googleLogin_deberiaRetornarLaRespuestaDelUseCase_cuandoElTokenEsValido() {
         // Arrange
         AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
-        when(googleLoginUseCase.execute("google-token")).thenReturn(expected);
+        when(googleLoginUseCase.execute("google-token", true)).thenReturn(expected);
 
         // Act
-        ResponseEntity<AuthResponseDTO> response = authController.googleLogin(Map.of("token", "google-token"));
+        ResponseEntity<AuthResponseDTO> response = authController.googleLogin(Map.of("token", "google-token", "acceptedTerms", "true"));
 
         // Assert
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -202,7 +202,7 @@ class AuthControllerTest {
         assertThatThrownBy(() -> authController.googleLogin(body))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("El token de Google es obligatorio");
-        verify(googleLoginUseCase, never()).execute(anyString());
+        verify(googleLoginUseCase, never()).execute(anyString(), anyBoolean());
     }
 
     @Test
@@ -237,10 +237,10 @@ class AuthControllerTest {
     void githubLogin_deberiaRetornarLaRespuestaDelUseCase_cuandoElCodigoEsValido() {
         // Arrange
         AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
-        when(githubLoginUseCase.execute("auth-code")).thenReturn(expected);
+        when(githubLoginUseCase.execute("auth-code", true)).thenReturn(expected);
 
         // Act
-        ResponseEntity<AuthResponseDTO> response = authController.githubLogin(Map.of("code", "auth-code"));
+        ResponseEntity<AuthResponseDTO> response = authController.githubLogin(Map.of("code", "auth-code", "acceptedTerms", "true"));
 
         // Assert
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -256,7 +256,7 @@ class AuthControllerTest {
         assertThatThrownBy(() -> authController.githubLogin(body))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("código de autorización de GitHub");
-        verify(githubLoginUseCase, never()).execute(anyString());
+        verify(githubLoginUseCase, never()).execute(anyString(), anyBoolean());
     }
 
     @Test
@@ -268,6 +268,26 @@ class AuthControllerTest {
         assertThatThrownBy(() -> authController.githubLogin(body))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("código de autorización de GitHub");
-        verify(githubLoginUseCase, never()).execute(anyString());
+        verify(githubLoginUseCase, never()).execute(anyString(), anyBoolean());
+    }
+
+    @Test
+    void googleLogin_deberiaEnviarAcceptedTermsFalse_cuandoElCampoNoViene() {
+        AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
+        when(googleLoginUseCase.execute("google-token", false)).thenReturn(expected);
+
+        authController.googleLogin(Map.of("token", "google-token"));
+
+        verify(googleLoginUseCase).execute("google-token", false);
+    }
+
+    @Test
+    void githubLogin_deberiaEnviarAcceptedTermsFalse_cuandoElCampoNoViene() {
+        AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
+        when(githubLoginUseCase.execute("auth-code", false)).thenReturn(expected);
+
+        authController.githubLogin(Map.of("code", "auth-code"));
+
+        verify(githubLoginUseCase).execute("auth-code", false);
     }
 }

@@ -36,7 +36,7 @@ public class GoogleLoginUseCase {
     private final TokenRedisRepository tokenRedisRepository;
     private final EventPublisher eventPublisher;
 
-    public AuthResponseDTO execute(String googleToken) {
+    public AuthResponseDTO execute(String googleToken, boolean acceptedTerms) {
         var payload = googleAuthService.verifyToken(googleToken);
         String email = payload.getEmail();
         String name = (String) payload.get("name");
@@ -44,6 +44,10 @@ public class GoogleLoginUseCase {
         log.info("[AUDIT] [SEC-AUTH-03] Intento de login con Google para el correo: {}", email);
 
         User user = userRepository.findByEmail(email).orElseGet(() -> {
+            if (!acceptedTerms) {
+                log.warn("[SECURITY] Intento de alta con Google sin aceptar términos para el correo: {}", email);
+                throw new IllegalArgumentException("Es obligatorio aceptar los términos y condiciones.");
+            }
             log.info("[AUDIT] Creando nuevo usuario a partir de cuenta de Google: {}", email);
             User newUser = User.builder()
                     .email(email)
@@ -52,7 +56,7 @@ public class GoogleLoginUseCase {
                     .role(Role.SEEKER)
                     .authProvider(AuthProvider.GOOGLE)
                     .emailVerified(true)
-                    .termsAccepted(true)
+                    .termsAccepted(acceptedTerms)
                     .termsAcceptedAt(LocalDateTime.now())
                     .termsVersion("1.0")
                     .accountStatus(AccountStatus.ACTIVE)

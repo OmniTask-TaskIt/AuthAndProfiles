@@ -2,9 +2,12 @@ package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web;
 
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ResolveReportRequestDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ReportResponseDTO;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AdminReportDTO;
 import com.omnitask.AuthAndProfiles.domain.enums.ReportStatus;
+import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.application.usecases.ResolveReportUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.ListReportsUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.ListPendingVerificationsUseCase;
 import org.springframework.web.bind.annotation.PostMapping;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ResolveVerificationRequestDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.ProfileResponseDTO;
@@ -45,6 +48,7 @@ public class AdminController {
     private final ResolveIdentityVerificationUseCase resolveIdentityVerificationUseCase;
     private final ListReportsUseCase listReportsUseCase;
     private final ResolveReportUseCase resolveReportUseCase;
+    private final ListPendingVerificationsUseCase listPendingVerificationsUseCase;
 
     @GetMapping("/users")
     public ResponseEntity<PageResponseDTO<AdminUserDTO>> listUsers(
@@ -77,6 +81,19 @@ public class AdminController {
     }
 
     /**
+     * Cola de verificaciones de identidad: por defecto, perfiles en PENDING_REVIEW ordenados del más
+     * antiguo al más reciente. También acepta otros estados (VERIFIED, REJECTED, UNVERIFIED) por si se
+     * quiere auditar el historial.
+     */
+    @GetMapping("/verification-documents")
+    public ResponseEntity<PageResponseDTO<ProfileResponseDTO>> listPendingVerifications(
+            @RequestParam(required = false) VerificationStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(listPendingVerificationsUseCase.execute(status, page, size));
+    }
+
+    /**
      * Resolución manual de la verificación (aprobar o rechazar). Usa la misma lógica que el evento
      * IdentityVerificationResolved que llega desde HITL; sirve mientras ese servicio no esté disponible.
      */
@@ -92,7 +109,7 @@ public class AdminController {
 
     /** Reportes de usuarios, mientras Security and Audit HITL no los consuma directamente de Kafka. */
     @GetMapping("/reports")
-    public ResponseEntity<PageResponseDTO<ReportResponseDTO>> listReports(
+    public ResponseEntity<PageResponseDTO<AdminReportDTO>> listReports(
             @RequestParam(required = false) ReportStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
