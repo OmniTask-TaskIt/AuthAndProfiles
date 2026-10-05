@@ -57,6 +57,7 @@ public class RegisterUserUseCase {
         }
 
         String otpCode = otpGenerator.generate();
+        String otpKey = "otp:" + request.getEmail();
 
         User newUser = User.builder()
                 .email(request.getEmail())
@@ -73,37 +74,75 @@ public class RegisterUserUseCase {
                 .updatedAt(LocalDateTime.now())
                 .build();
 
+        // El guardado del usuario es la "compuerta" de unicidad: si falla (p. ej. dos registros
+        // simultáneos del mismo correo) todavía no se tocó Redis ni se envió nada que deshacer.
         User savedUser = userRepository.save(newUser);
 
-        Profile initialProfile = Profile.builder()
-                .userId(savedUser.getId())
-                .fullName(savedUser.getName())
-                .currentRole(savedUser.getRole().name())
-                .reputationScore(5.0f)
-                .totalReviews(0)
-                .description("")
-                .locationCoverage("")
-                .photoUrl("")
-                .documentUrl("")
-                .categories(new ArrayList<>())
-                .identityVerificationStatus(VerificationStatus.UNVERIFIED)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
+        // A partir de aquí hay varios sistemas externos (Mongo, Redis, Resend, outbox) sin transacción
+        // común. Si alguno falla, se revierte lo ya creado para que el registro sea "todo o nada":
+        // antes, un fallo del correo (502) dejaba una cuenta PENDING_VERIFICATION sin OTP.
+        try {
+            Profile initialProfile = Profile.builder()
+                    .userId(savedUser.getId())
+                    .fullName(savedUser.getName())
+                    .currentRole(savedUser.getRole().name())
+                    .reputationScore(5.0f)
+                    .totalReviews(0)
+                    .description("")
+                    .locationCoverage("")
+                    .photoUrl("")
+                    .documentUrl("")
+                    .categories(new ArrayList<>())
+                    .identityVerificationStatus(VerificationStatus.UNVERIFIED)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build();
 
-        profileRepository.save(initialProfile);
+            profileRepository.save(initialProfile);
 
-        eventPublisher.publish(EventType.USER_REGISTERED, savedUser.getId(),
-                new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail(), savedUser.getName(),
-                        savedUser.getRole().name(), AuthProvider.LOCAL.name(), Instant.now()));
+            // El OTP se guarda ANTES de enviar el correo: nunca se manda un código que no se pueda verificar.
+            tokenRedisRepository.saveRefreshToken(otpKey, otpCode, 600000);
 
-        resendEmailService.sendOtpEmail(savedUser.getEmail(), otpCode);
+            resendEmailService.sendOtpEmail(savedUser.getEmail(), otpCode);
 
-        String otpKey = "otp:" + savedUser.getEmail();
-        tokenRedisRepository.saveRefreshToken(otpKey, otpCode, 600000);
+            // El evento va al final: solo se anuncia un USER_REGISTERED de un registro que se completó.
+            eventPublisher.publish(EventType.USER_REGISTERED, savedUser.getId(),
+                    new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail(), savedUser.getName(),
+                            savedUser.getRole().name(), AuthProvider.LOCAL.name(), Instant.now()));
+        } catch (RuntimeException e) {
+            log.error("[AUDIT] Registro fallido para {}; se revierte la cuenta creada: {}",
+                    savedUser.getEmail(), e.getMessage());
+            rollbackRegistration(savedUser, otpKey);
+            throw e;
+        }
 
         log.info("[AUDIT] [SEC-AUTH-02] Registro exitoso con aceptación de términos v1.0. OTP enviado a ID: {}",
                 savedUser.getId());
         return savedUser;
+    }
+
+    /**
+     * Deshace lo creado por un registro que no se pudo completar. Cada paso va por separado para que el
+     * fallo de uno (p. ej. Redis caído) no impida intentar los demás ni oculte la excepción original.
+     */
+    private void rollbackRegistration(User savedUser, String otpKey) {
+        try {
+            tokenRedisRepository.deleteRefreshToken(otpKey);
+        } catch (RuntimeException ex) {
+            log.error("[AUDIT] No se pudo borrar el OTP de {} al revertir el registro: {}", savedUser.getEmail(),
+                    ex.getMessage());
+        }
+        try {
+            profileRepository.findByUserId(savedUser.getId()).ifPresent(profileRepository::delete);
+        } catch (RuntimeException ex) {
+            log.error("[AUDIT] No se pudo borrar el perfil de {} al revertir el registro: {}", savedUser.getEmail(),
+                    ex.getMessage());
+        }
+        try {
+            userRepository.delete(savedUser);
+        } catch (RuntimeException ex) {
+            log.error("[AUDIT] No se pudo borrar el usuario {} al revertir el registro: {}", savedUser.getEmail(),
+                    ex.getMessage());
+        }
     }
 }
