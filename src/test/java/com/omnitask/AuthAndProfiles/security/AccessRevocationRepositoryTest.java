@@ -62,4 +62,32 @@ class AccessRevocationRepositoryTest {
 
         verify(redisTemplate).delete("revoked_user:test@gmail.com");
     }
+
+    // SHA-256 de "access-token": en Redis se guarda el hash, nunca el token en claro.
+    private static final String ACCESS_TOKEN_HASH = "3f16bed7089f4653e5ef21bfd2824d7f3aaaecc7a598e7e89c580e1606a9cc52";
+
+    @Test
+    void revokeToken_deberiaGuardarElHashDelTokenConElTtlRestante() {
+        accessRevocationRepository.revokeToken("access-token", 600000L);
+
+        verify(valueOperations).set("revoked_token:" + ACCESS_TOKEN_HASH, "REVOKED", Duration.ofMillis(600000L));
+    }
+
+    @Test
+    void isTokenRevoked_deberiaRetornarTrue_cuandoElTokenEstaEnLaListaDeRevocacion() {
+        when(redisTemplate.hasKey("revoked_token:" + ACCESS_TOKEN_HASH)).thenReturn(true);
+
+        assertThat(accessRevocationRepository.isTokenRevoked("access-token")).isTrue();
+    }
+
+    @Test
+    void isTokenRevoked_deberiaRetornarFalse_cuandoElTokenNoEstaONoHayRespuesta() {
+        when(redisTemplate.hasKey("revoked_token:" + ACCESS_TOKEN_HASH)).thenReturn(false);
+
+        assertThat(accessRevocationRepository.isTokenRevoked("access-token")).isFalse();
+
+        when(redisTemplate.hasKey("revoked_token:" + ACCESS_TOKEN_HASH)).thenReturn(null);
+
+        assertThat(accessRevocationRepository.isTokenRevoked("access-token")).isFalse();
+    }
 }

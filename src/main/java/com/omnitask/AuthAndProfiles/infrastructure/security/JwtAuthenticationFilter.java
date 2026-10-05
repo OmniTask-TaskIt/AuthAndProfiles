@@ -23,6 +23,7 @@ import java.util.List;
  * <li>Solo se aceptan access tokens (los refresh tokens no llevan rol y se ignoran).</li>
  * <li>El rol del token se convierte en la authority ROLE_X para la autorización por rol.</li>
  * <li>Se rechazan los tokens de usuarios revocados (cuenta suspendida o bloqueada).</li>
+ * <li>Se rechazan los access tokens que están en la lista de revocación por cierre de sesión (logout).</li>
  * </ul>
  * Ante cualquier problema con el token la petición sigue sin autenticar (respuesta 401).
  */
@@ -55,7 +56,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     && isAccessToken
                     && SecurityContextHolder.getContext().getAuthentication() == null
                     && jwtService.isTokenValid(jwt, userEmail)
-                    && !accessRevocationRepository.isUserRevoked(userEmail)) {
+                    && !accessRevocationRepository.isUserRevoked(userEmail)
+                    && !accessRevocationRepository.isTokenRevoked(jwt)) {
 
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userEmail,

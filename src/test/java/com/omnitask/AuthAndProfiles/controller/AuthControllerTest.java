@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 
 import java.util.Map;
 
@@ -38,6 +39,14 @@ class AuthControllerTest {
     private GithubLoginUseCase githubLoginUseCase;
     @Mock
     private ResendOtpUseCase resendOtpUseCase;
+    @Mock
+    private ForgotPasswordUseCase forgotPasswordUseCase;
+    @Mock
+    private ResetPasswordUseCase resetPasswordUseCase;
+    @Mock
+    private LogoutUseCase logoutUseCase;
+    @Mock
+    private Authentication authentication;
     @Mock
     private HttpServletRequest httpServletRequest;
 
@@ -289,5 +298,57 @@ class AuthControllerTest {
         authController.githubLogin(Map.of("code", "auth-code"));
 
         verify(githubLoginUseCase).execute("auth-code", false);
+    }
+
+    @Test
+    void forgotPassword_deberiaResponder200ConUnMensajeGenerico_yPasarLaIpDelCliente() {
+        // Arrange
+        ForgotPasswordRequestDTO request = new ForgotPasswordRequestDTO();
+        request.setEmail("test@gmail.com");
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn("203.0.113.5, 10.0.0.1");
+
+        // Act
+        ResponseEntity<Map<String, String>> response = authController.forgotPassword(request, httpServletRequest);
+
+        // Assert: el mensaje no revela si el correo existe
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsKey("message");
+        assertThat(response.getBody().get("message")).contains("Si el correo está registrado");
+        verify(forgotPasswordUseCase).execute("test@gmail.com", "203.0.113.5");
+    }
+
+    @Test
+    void resetPassword_deberiaResponder200_yDelegarEnElCasoDeUso() {
+        // Arrange
+        ResetPasswordRequestDTO request = new ResetPasswordRequestDTO();
+        request.setEmail("test@gmail.com");
+        request.setCode("123456");
+        request.setNewPassword("NuevaClave1!");
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(httpServletRequest.getRemoteAddr()).thenReturn("192.168.0.10");
+
+        // Act
+        ResponseEntity<Map<String, String>> response = authController.resetPassword(request, httpServletRequest);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("message")).contains("Contraseña actualizada");
+        verify(resetPasswordUseCase).execute(request, "192.168.0.10");
+    }
+
+    @Test
+    void logout_deberiaRevocarElAccessTokenDelHeader_conElCorreoDeLaSesion() {
+        // Arrange
+        when(authentication.getName()).thenReturn("test@gmail.com");
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn("203.0.113.5");
+
+        // Act
+        ResponseEntity<Map<String, String>> response = authController.logout(authentication, "Bearer access-token",
+                httpServletRequest);
+
+        // Assert: el token llega sin el prefijo "Bearer "
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("message")).isEqualTo("Sesión cerrada correctamente.");
+        verify(logoutUseCase).execute("test@gmail.com", "access-token", "203.0.113.5");
     }
 }

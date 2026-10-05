@@ -1,11 +1,14 @@
 package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web;
 
+import com.omnitask.AuthAndProfiles.application.usecases.ForgotPasswordUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.GithubLoginUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.GoogleLoginUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.LoginUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.LogoutUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.RefreshTokenUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.RegisterUserUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.ResendOtpUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.ResetPasswordUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.VerifyOtpUseCase;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.*;
 
@@ -14,6 +17,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -30,6 +34,9 @@ public class AuthController {
     private final GoogleLoginUseCase googleLoginUseCase;
     private final GithubLoginUseCase githubLoginUseCase;
     private final ResendOtpUseCase resendOtpUseCase;
+    private final ForgotPasswordUseCase forgotPasswordUseCase;
+    private final ResetPasswordUseCase resetPasswordUseCase;
+    private final LogoutUseCase logoutUseCase;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDTO request) {
@@ -61,6 +68,33 @@ public class AuthController {
     public ResponseEntity<AuthResponseDTO> refresh(@Valid @RequestBody RefreshTokenRequestDTO request) {
         AuthResponseDTO response = refreshTokenUseCase.execute(request);
         return ResponseEntity.ok(response);
+    }
+
+    /** RF-AUTH-4 (paso 1). Responde igual exista o no la cuenta, para no revelar qué correos están registrados. */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequestDTO request,
+            HttpServletRequest httpRequest) {
+        forgotPasswordUseCase.execute(request.getEmail(), getClientIp(httpRequest));
+        return ResponseEntity.ok(Map.of("message",
+                "Si el correo está registrado, recibirás un código de recuperación que vence en 15 minutos."));
+    }
+
+    /** RF-AUTH-4 (paso 2) y RF-AUTH-14: cambia la contraseña con el código recibido y avisa por correo. */
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequestDTO request,
+            HttpServletRequest httpRequest) {
+        resetPasswordUseCase.execute(request, getClientIp(httpRequest));
+        return ResponseEntity.ok(Map.of("message", "Contraseña actualizada. Ya puedes iniciar sesión."));
+    }
+
+    /** RF-AUTH-8: requiere sesión; revoca el access token de la petición y borra el refresh token. */
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, String>> logout(Authentication authentication,
+            @RequestHeader("Authorization") String authorization, HttpServletRequest httpRequest) {
+        // Solo se llega aquí con un access token válido, así que el header siempre empieza con "Bearer ".
+        String accessToken = authorization.substring(7);
+        logoutUseCase.execute(authentication.getName(), accessToken, getClientIp(httpRequest));
+        return ResponseEntity.ok(Map.of("message", "Sesión cerrada correctamente."));
     }
 
     private String getClientIp(HttpServletRequest request) {

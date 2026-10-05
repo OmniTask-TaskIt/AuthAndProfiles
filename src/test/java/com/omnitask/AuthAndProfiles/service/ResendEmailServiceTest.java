@@ -83,4 +83,77 @@ class ResendEmailServiceTest {
                 .hasMessage("Error al enviar el correo de verificación");
         server.verify();
     }
+
+    @Test
+    void sendPasswordResetEmail_deberiaEnviarElCodigoDeRecuperacion_cuandoResendResponde200() {
+        // Arrange
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("Authorization", "Bearer re_test_key"))
+                .andExpect(jsonPath("$.from").value("no-reply@taskit.com"))
+                .andExpect(jsonPath("$.to[0]").value("destino@gmail.com"))
+                .andExpect(jsonPath("$.subject", containsString("Recuperación de contraseña")))
+                .andExpect(jsonPath("$.html", containsString("654321")))
+                .andExpect(jsonPath("$.html", containsString("15 minutos")))
+                .andRespond(withSuccess("{\"id\":\"abc\"}", MediaType.APPLICATION_JSON));
+
+        // Act & Assert
+        assertThatCode(() -> resendEmailService.sendPasswordResetEmail("destino@gmail.com", "654321"))
+                .doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void sendPasswordResetEmail_deberiaLanzarExternalServiceException_cuandoResendResponde500() {
+        // Arrange
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andRespond(withServerError());
+
+        // Act & Assert
+        assertThatThrownBy(() -> resendEmailService.sendPasswordResetEmail("destino@gmail.com", "654321"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Error al enviar el correo de recuperación de contraseña");
+        server.verify();
+    }
+
+    @Test
+    void sendPasswordChangedEmail_deberiaAvisarDelCambioDeContrasena_cuandoResendResponde200() {
+        // Arrange
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.to[0]").value("destino@gmail.com"))
+                .andExpect(jsonPath("$.subject", containsString("contraseña fue actualizada")))
+                .andRespond(withSuccess("{\"id\":\"abc\"}", MediaType.APPLICATION_JSON));
+
+        // Act & Assert
+        assertThatCode(() -> resendEmailService.sendPasswordChangedEmail("destino@gmail.com"))
+                .doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void sendPasswordChangedEmail_deberiaLanzarExternalServiceException_cuandoResendResponde500() {
+        // Arrange
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andRespond(withServerError());
+
+        // Act & Assert
+        assertThatThrownBy(() -> resendEmailService.sendPasswordChangedEmail("destino@gmail.com"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Error al enviar la notificación de cambio de contraseña");
+        server.verify();
+    }
+
+    @Test
+    void sendPasswordResetEmailYChanged_noDeberianLlamarAResend_cuandoEmailEnabledEsFalse() {
+        // Arrange
+        ReflectionTestUtils.setField(resendEmailService, "emailEnabled", false);
+
+        // Act & Assert
+        assertThatCode(() -> {
+            resendEmailService.sendPasswordResetEmail("destino@gmail.com", "654321");
+            resendEmailService.sendPasswordChangedEmail("destino@gmail.com");
+        }).doesNotThrowAnyException();
+        server.verify();
+    }
 }
