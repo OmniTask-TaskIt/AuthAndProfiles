@@ -36,6 +36,9 @@ public class Profile {
     private Float reputationScore;
     private int totalReviews;
 
+    /** RF-AUTHPR-8: tareas completadas como prestador. Lo actualiza el evento TaskCompleted de Task Service. */
+    private int tasksCompleted;
+
     /** Obsoleto: antes guardaba la URL pública del documento. Ya no se escribe; ver documentBlobName. */
     private String documentUrl;
 

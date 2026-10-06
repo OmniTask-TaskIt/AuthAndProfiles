@@ -5,7 +5,9 @@ import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.GoogleAuthService;
-import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.application.services.ClientContext;
+import com.omnitask.AuthAndProfiles.application.services.SessionService;
+import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
@@ -13,7 +15,6 @@ import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.policies.AccountAccessPolicy;
-import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
@@ -32,11 +33,10 @@ public class GoogleLoginUseCase {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final GoogleAuthService googleAuthService;
-    private final JwtService jwtService;
-    private final TokenRedisRepository tokenRedisRepository;
+    private final SessionService sessionService;
     private final EventPublisher eventPublisher;
 
-    public AuthResponseDTO execute(String googleToken, boolean acceptedTerms) {
+    public AuthResponseDTO execute(String googleToken, boolean acceptedTerms, ClientContext context) {
         var payload = googleAuthService.verifyToken(googleToken);
         String email = payload.getEmail();
         String name = (String) payload.get("name");
@@ -93,12 +93,10 @@ public class GoogleLoginUseCase {
 
         AccountAccessPolicy.ensureNotRestricted(user);
 
-        String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getRole().name());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail());
-
-        tokenRedisRepository.saveRefreshToken(user.getEmail(), refreshToken, 604800000);
+        SessionTokens tokens = sessionService.openSession(user, context);
 
         log.info("[AUTH] Login con Google exitoso para: {}", user.getEmail());
-        return new AuthResponseDTO(accessToken, refreshToken, "Autenticación con Google exitosa", user.getEmail());
+        return new AuthResponseDTO(tokens.accessToken(), tokens.refreshToken(), "Autenticación con Google exitosa",
+                user.getEmail());
     }
 }

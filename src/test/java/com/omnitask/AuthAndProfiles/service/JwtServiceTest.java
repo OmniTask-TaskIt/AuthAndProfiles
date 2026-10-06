@@ -109,4 +109,31 @@ class JwtServiceTest {
     void getAccessTokenExpirationMillis_deberiaRetornarLaExpiracionConfigurada() {
         assertThat(jwtService.getAccessTokenExpirationMillis()).isEqualTo(900000L);
     }
+
+    @Test
+    void generateAccessToken_deberiaIncluirElIdDeSesion_cuandoSeIndica() {
+        String token = jwtService.generateAccessToken("test@gmail.com", "SEEKER", "sesion-1");
+
+        assertThat(jwtService.extractSessionId(token)).isEqualTo("sesion-1");
+        assertThat(jwtService.extractRole(token)).isEqualTo("SEEKER");
+    }
+
+    @Test
+    void generateRefreshToken_deberiaIncluirElIdDeSesion_sinClaimDeRol() {
+        String token = jwtService.generateRefreshToken("test@gmail.com", "sesion-1");
+
+        assertThat(jwtService.extractSessionId(token)).isEqualTo("sesion-1");
+        assertThat(jwtService.extractRole(token)).isNull();
+    }
+
+    @Test
+    void extractSessionId_deberiaRetornarNull_cuandoElTokenNoTieneSesion() {
+        assertThat(jwtService.extractSessionId(jwtService.generateAccessToken("test@gmail.com", "SEEKER"))).isNull();
+        assertThat(jwtService.extractSessionId(jwtService.generateAccessToken("test@gmail.com", "SEEKER", ""))).isNull();
+    }
+
+    @Test
+    void getRefreshTokenExpirationMillis_deberiaRetornarLaExpiracionConfigurada() {
+        assertThat(jwtService.getRefreshTokenExpirationMillis()).isEqualTo(604800000L);
+    }
 }

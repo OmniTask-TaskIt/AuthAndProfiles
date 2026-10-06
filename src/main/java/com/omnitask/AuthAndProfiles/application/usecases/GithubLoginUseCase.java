@@ -2,7 +2,9 @@ package com.omnitask.AuthAndProfiles.application.usecases;
 
 import com.omnitask.AuthAndProfiles.application.services.GithubAuthService;
 import com.omnitask.AuthAndProfiles.application.services.GithubProfile;
-import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.application.services.ClientContext;
+import com.omnitask.AuthAndProfiles.application.services.SessionService;
+import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
@@ -14,7 +16,6 @@ import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.policies.AccountAccessPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
-import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
@@ -39,11 +40,10 @@ public class GithubLoginUseCase {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final GithubAuthService githubAuthService;
-    private final JwtService jwtService;
-    private final TokenRedisRepository tokenRedisRepository;
+    private final SessionService sessionService;
     private final EventPublisher eventPublisher;
 
-    public AuthResponseDTO execute(String code, boolean acceptedTerms) {
+    public AuthResponseDTO execute(String code, boolean acceptedTerms, ClientContext context) {
         String accessToken = githubAuthService.exchangeCodeForAccessToken(code);
         GithubProfile profile = githubAuthService.fetchProfile(accessToken);
 
@@ -104,13 +104,10 @@ public class GithubLoginUseCase {
 
         AccountAccessPolicy.ensureNotRestricted(user);
 
-        String jwtAccessToken = jwtService.generateAccessToken(user.getEmail(), user.getRole().name());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail());
-
-        tokenRedisRepository.saveRefreshToken(user.getEmail(), refreshToken, 604800000);
+        SessionTokens tokens = sessionService.openSession(user, context);
 
         log.info("[AUTH] Login con GitHub exitoso para: {}", user.getEmail());
-        return new AuthResponseDTO(jwtAccessToken, refreshToken, "Autenticación con GitHub exitosa",
+        return new AuthResponseDTO(tokens.accessToken(), tokens.refreshToken(), "Autenticación con GitHub exitosa",
                 user.getEmail());
     }
 }

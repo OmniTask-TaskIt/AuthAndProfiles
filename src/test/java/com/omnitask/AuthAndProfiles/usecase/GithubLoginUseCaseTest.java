@@ -2,7 +2,9 @@ package com.omnitask.AuthAndProfiles.usecase;
 
 import com.omnitask.AuthAndProfiles.application.services.GithubAuthService;
 import com.omnitask.AuthAndProfiles.application.services.GithubProfile;
-import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.application.services.ClientContext;
+import com.omnitask.AuthAndProfiles.application.services.SessionService;
+import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
 import com.omnitask.AuthAndProfiles.application.usecases.GithubLoginUseCase;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
@@ -13,7 +15,6 @@ import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
-import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
@@ -28,7 +29,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -45,14 +45,14 @@ class GithubLoginUseCaseTest {
     @Mock
     private GithubAuthService githubAuthService;
     @Mock
-    private JwtService jwtService;
-    @Mock
-    private TokenRedisRepository tokenRedisRepository;
+    private SessionService sessionService;
     @Mock
     private EventPublisher eventPublisher;
 
     @InjectMocks
     private GithubLoginUseCase githubLoginUseCase;
+
+    private static final ClientContext CONTEXT = new ClientContext("127.0.0.1", "Mozilla/5.0 Chrome/120", "device-1");
 
     private void stubExchange(String email, String name, String login) {
         when(githubAuthService.exchangeCodeForAccessToken("auth-code")).thenReturn("gh-token");
@@ -65,11 +65,11 @@ class GithubLoginUseCaseTest {
         User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER).build();
         stubExchange("test@gmail.com", "Robin", "robin");
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
-        when(jwtService.generateAccessToken("test@gmail.com", "SEEKER")).thenReturn("access-token");
-        when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
         // Act
-        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", true);
+        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", true, CONTEXT);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -87,11 +87,11 @@ class GithubLoginUseCaseTest {
             u.setId("user-nuevo");
             return u;
         });
-        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
         // Act
-        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", true);
+        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", true, CONTEXT);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -108,11 +108,11 @@ class GithubLoginUseCaseTest {
         stubExchange("sinnombre@gmail.com", null, "solo-login");
         when(userRepository.findByEmail("sinnombre@gmail.com")).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
         // Act
-        githubLoginUseCase.execute("auth-code", true);
+        githubLoginUseCase.execute("auth-code", true, CONTEXT);
 
         // Assert
         verify(userRepository).save(argThat((User u) -> u.getName().equals("solo-login")));
@@ -127,11 +127,10 @@ class GithubLoginUseCaseTest {
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
 
         // Act & Assert
-        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true))
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true, CONTEXT))
                 .isInstanceOf(AccountRestrictedException.class)
                 .hasMessageContaining("suspendida");
-        verify(jwtService, never()).generateAccessToken(any(), any());
-        verify(tokenRedisRepository, never()).saveRefreshToken(any(), any(), anyLong());
+        verify(sessionService, never()).openSession(any(), any());
     }
 
     @Test
@@ -140,7 +139,7 @@ class GithubLoginUseCaseTest {
         stubExchange(null, "Robin", "robin");
 
         // Act & Assert
-        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true))
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true, CONTEXT))
                 .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("correo verificado");
         verify(userRepository, never()).findByEmail(any());
@@ -152,7 +151,7 @@ class GithubLoginUseCaseTest {
         // que ya cubre el test de arriba.
         stubExchange("", "Robin", "robin");
 
-        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true))
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", true, CONTEXT))
                 .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("correo verificado");
         verify(userRepository, never()).findByEmail(any());
@@ -165,10 +164,10 @@ class GithubLoginUseCaseTest {
         stubExchange("sinnombre2@gmail.com", "", "solo-login-2");
         when(userRepository.findByEmail("sinnombre2@gmail.com")).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
-        githubLoginUseCase.execute("auth-code", true);
+        githubLoginUseCase.execute("auth-code", true, CONTEXT);
 
         verify(userRepository).save(argThat((User u) -> u.getName().equals("solo-login-2")));
     }
@@ -182,10 +181,10 @@ class GithubLoginUseCaseTest {
             u.setId("user-nuevo");
             return u;
         });
-        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
-        githubLoginUseCase.execute("auth-code", true);
+        githubLoginUseCase.execute("auth-code", true, CONTEXT);
 
         verify(userRepository).save(argThat((User u) -> u.isTermsAccepted()
                 && u.getTermsAcceptedAt() != null && "1.0".equals(u.getTermsVersion())));
@@ -196,13 +195,13 @@ class GithubLoginUseCaseTest {
         stubExchange("nuevo@gmail.com", "Nuevo Usuario", "login-x");
         when(userRepository.findByEmail("nuevo@gmail.com")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", false))
+        assertThatThrownBy(() -> githubLoginUseCase.execute("auth-code", false, CONTEXT))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("términos y condiciones");
         verify(userRepository, never()).save(any());
         verify(profileRepository, never()).save(any());
         verify(eventPublisher, never()).publish(any(), any(), any());
-        verify(jwtService, never()).generateAccessToken(any(), any());
+        verify(sessionService, never()).openSession(any(), any());
     }
 
     @Test
@@ -210,10 +209,10 @@ class GithubLoginUseCaseTest {
         User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER).build();
         stubExchange("test@gmail.com", "Robin", "login-x");
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
-        when(jwtService.generateAccessToken("test@gmail.com", "SEEKER")).thenReturn("access-token");
-        when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
-        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", false);
+        AuthResponseDTO response = githubLoginUseCase.execute("auth-code", false, CONTEXT);
 
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(userRepository, never()).save(any());

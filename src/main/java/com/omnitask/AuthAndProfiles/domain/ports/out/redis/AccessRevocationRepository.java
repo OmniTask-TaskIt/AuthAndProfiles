@@ -19,6 +19,9 @@ import java.util.HexFormat;
  * <li><b>Por token</b>: lista de revocación (blacklist) de un access token puntual, usada en el cierre
  * de sesión (RF-AUTH-8). Se guarda el hash SHA-256 del token, nunca el token en claro, con un TTL igual
  * al tiempo que le queda de vida: después de eso el token expira solo y la marca se limpia sola.</li>
+ * <li><b>Por sesión</b>: marca una sesión cerrada (logout, cierre remoto, reemplazo o límite de dispositivos,
+ * RF-AUTH-10/13) para que su access token, que lleva el id en el claim "sid", deje de valer de inmediato.
+ * El TTL es la vida máxima de un access token.</li>
  * </ul>
  */
 @Repository
@@ -27,6 +30,7 @@ public class AccessRevocationRepository {
 
     private static final String PREFIX = "revoked_user:";
     private static final String TOKEN_PREFIX = "revoked_token:";
+    private static final String SESSION_PREFIX = "revoked_session:";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -49,6 +53,14 @@ public class AccessRevocationRepository {
 
     public boolean isTokenRevoked(String token) {
         return Boolean.TRUE.equals(redisTemplate.hasKey(TOKEN_PREFIX + sha256(token)));
+    }
+
+    public void revokeSession(String sessionId, long ttlMillis) {
+        redisTemplate.opsForValue().set(SESSION_PREFIX + sessionId, "REVOKED", Duration.ofMillis(ttlMillis));
+    }
+
+    public boolean isSessionRevoked(String sessionId) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(SESSION_PREFIX + sessionId));
     }
 
     private static String sha256(String value) {

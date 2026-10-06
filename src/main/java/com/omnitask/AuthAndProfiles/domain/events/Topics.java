@@ -15,6 +15,9 @@ public final class Topics {
     /** Eventos que publica Security and Audit HITL y que este MS consume. */
     public static final String SECURITY_EVENTS = "taskit.security.events";
 
+    /** Eventos que publica Task Service y este MS consume (tareas completadas, RF-AUTHPR-8). */
+    public static final String TASK_EVENTS = "taskit.task.events";
+
     /** Mensajes que no se pudieron procesar tras los reintentos. */
     public static final String DEAD_LETTER = "taskit.auth.dead-letter";
 

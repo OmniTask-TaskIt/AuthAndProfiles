@@ -198,4 +198,36 @@ class JwtAuthenticationFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isSameAs(existente);
         verify(chain).doFilter(request, response);
     }
+
+    @Test
+    void doFilter_noDeberiaAutenticar_cuandoLaSesionDelTokenFueCerrada() throws Exception {
+        MockHttpServletRequest request = requestWithBearer("access-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        when(jwtService.extractEmail("access-token")).thenReturn("test@gmail.com");
+        when(jwtService.extractRole("access-token")).thenReturn("SEEKER");
+        when(jwtService.isTokenValid("access-token", "test@gmail.com")).thenReturn(true);
+        when(jwtService.extractSessionId("access-token")).thenReturn("sesion-1");
+        when(accessRevocationRepository.isSessionRevoked("sesion-1")).thenReturn(true);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void doFilter_deberiaAutenticar_cuandoLaSesionDelTokenSigueVigente() throws Exception {
+        MockHttpServletRequest request = requestWithBearer("access-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        when(jwtService.extractEmail("access-token")).thenReturn("test@gmail.com");
+        when(jwtService.extractRole("access-token")).thenReturn("SEEKER");
+        when(jwtService.isTokenValid("access-token", "test@gmail.com")).thenReturn(true);
+        when(jwtService.extractSessionId("access-token")).thenReturn("sesion-1");
+        when(accessRevocationRepository.isSessionRevoked("sesion-1")).thenReturn(false);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
+        verify(chain).doFilter(request, response);
+    }
 }

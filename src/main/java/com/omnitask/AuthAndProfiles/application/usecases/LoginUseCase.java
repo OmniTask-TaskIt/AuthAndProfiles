@@ -5,13 +5,14 @@ import com.omnitask.AuthAndProfiles.domain.events.SecurityAuditEvent;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.IpRateLimiterService;
-import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.application.services.ClientContext;
+import com.omnitask.AuthAndProfiles.application.services.SessionService;
+import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.TooManyAttemptsException;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.policies.AccountAccessPolicy;
-import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.LoginRequestDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
@@ -27,12 +28,12 @@ public class LoginUseCase {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
-    private final TokenRedisRepository tokenRedisRepository;
+    private final SessionService sessionService;
     private final IpRateLimiterService ipRateLimiterService;
     private final EventPublisher eventPublisher;
 
-    public AuthResponseDTO execute(LoginRequestDTO request, String clientIp) {
+    public AuthResponseDTO execute(LoginRequestDTO request, ClientContext context) {
+        String clientIp = context.ip();
         if (ipRateLimiterService.isBlocked(clientIp)) {
             log.warn("[SECURITY] [SEC-AUTH-06] Acceso denegado. IP bloqueada temporalmente: {}", clientIp);
             audit("LOGIN_BLOCKED", request.getEmail(), clientIp);
@@ -62,15 +63,14 @@ public class LoginUseCase {
 
         ipRateLimiterService.resetAttempts(clientIp);
 
-        String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getRole().name());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail());
-
-        tokenRedisRepository.saveRefreshToken(user.getEmail(), refreshToken, 604800000);
+        // Crea la sesión del dispositivo (RF-AUTH-10/13), emite los tokens y avisa si el dispositivo es nuevo (RF-AUTH-11).
+        SessionTokens tokens = sessionService.openSession(user, context);
 
         audit("LOGIN_SUCCESS", user.getEmail(), clientIp);
         log.info("[AUTH] [SEC-AUTH-02] Login exitoso para el usuario: {} desde IP: {}", user.getEmail(), clientIp);
 
-        return new AuthResponseDTO(accessToken, refreshToken, "Inicio de sesión exitoso", user.getEmail());
+        return new AuthResponseDTO(tokens.accessToken(), tokens.refreshToken(), "Inicio de sesión exitoso",
+                user.getEmail());
     }
 
     /** Traza de auditoría (RNF-AUTHPR-6) hacia Security and Audit. */

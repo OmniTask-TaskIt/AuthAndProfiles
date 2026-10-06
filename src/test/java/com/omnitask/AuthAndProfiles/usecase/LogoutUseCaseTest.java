@@ -1,6 +1,7 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
 import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.application.services.SessionService;
 import com.omnitask.AuthAndProfiles.application.usecases.LogoutUseCase;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.domain.events.SecurityAuditEvent;
@@ -37,6 +38,8 @@ class LogoutUseCaseTest {
     private AccessRevocationRepository accessRevocationRepository;
     @Mock
     private EventPublisher eventPublisher;
+    @Mock
+    private SessionService sessionService;
 
     @InjectMocks
     private LogoutUseCase logoutUseCase;
@@ -73,5 +76,38 @@ class LogoutUseCaseTest {
         // Assert: el refresh token se borra igual, pero no hay marca que guardar en Redis
         verify(tokenRedisRepository).deleteRefreshToken("test@gmail.com");
         verify(accessRevocationRepository, never()).revokeToken(anyString(), anyLong());
+    }
+
+    @Test
+    void execute_deberiaCerrarSoloLaSesionDelToken_sinBorrarElRefreshTokenDeLaCuenta() {
+        // Arrange: el access token pertenece a una sesión (claim "sid")
+        when(jwtService.extractSessionId("access-token")).thenReturn("sesion-1");
+        when(jwtService.<Date>extractClaim(eq("access-token"), any()))
+                .thenReturn(new Date(System.currentTimeMillis() + 600_000L));
+
+        // Act
+        logoutUseCase.execute("test@gmail.com", "access-token", "127.0.0.1");
+
+        // Assert: las demás sesiones del usuario siguen intactas
+        verify(sessionService).revoke("test@gmail.com", "sesion-1", "LOGOUT");
+        verify(tokenRedisRepository, never()).deleteRefreshToken(anyString());
+        verify(accessRevocationRepository).revokeToken(eq("access-token"), anyLong());
+        verify(eventPublisher).publish(eq(EventType.SECURITY_AUDIT), eq("test@gmail.com"),
+                argThat((SecurityAuditEvent e) -> e.action().equals("LOGOUT")));
+    }
+
+    @Test
+    void execute_noDeberiaTocarLasSesiones_cuandoElTokenNoTieneSesion() {
+        // Arrange: token anterior a las sesiones
+        when(jwtService.extractSessionId("access-token")).thenReturn(null);
+        when(jwtService.<Date>extractClaim(eq("access-token"), any()))
+                .thenReturn(new Date(System.currentTimeMillis() + 600_000L));
+
+        // Act
+        logoutUseCase.execute("test@gmail.com", "access-token", "127.0.0.1");
+
+        // Assert
+        verify(sessionService, never()).revoke(anyString(), anyString(), anyString());
+        verify(tokenRedisRepository).deleteRefreshToken("test@gmail.com");
     }
 }

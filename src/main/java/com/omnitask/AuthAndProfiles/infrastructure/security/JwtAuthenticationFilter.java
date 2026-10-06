@@ -24,6 +24,8 @@ import java.util.List;
  * <li>El rol del token se convierte en la authority ROLE_X para la autorización por rol.</li>
  * <li>Se rechazan los tokens de usuarios revocados (cuenta suspendida o bloqueada).</li>
  * <li>Se rechazan los access tokens que están en la lista de revocación por cierre de sesión (logout).</li>
+ * <li>Se rechazan los access tokens cuya sesión (claim "sid") fue cerrada: logout, cierre remoto, reemplazo
+ * en el mismo dispositivo o límite de dispositivos.</li>
  * </ul>
  * Ante cualquier problema con el token la petición sigue sin autenticar (respuesta 401).
  */
@@ -57,7 +59,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     && SecurityContextHolder.getContext().getAuthentication() == null
                     && jwtService.isTokenValid(jwt, userEmail)
                     && !accessRevocationRepository.isUserRevoked(userEmail)
-                    && !accessRevocationRepository.isTokenRevoked(jwt)) {
+                    && !accessRevocationRepository.isTokenRevoked(jwt)
+                    && !isSessionRevoked(jwt)) {
 
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userEmail,
@@ -71,5 +74,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /** Los tokens emitidos antes de las sesiones no llevan "sid" y no se ven afectados. */
+    private boolean isSessionRevoked(String jwt) {
+        String sessionId = jwtService.extractSessionId(jwt);
+        return sessionId != null && accessRevocationRepository.isSessionRevoked(sessionId);
     }
 }

@@ -7,12 +7,13 @@ import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
 import com.omnitask.AuthAndProfiles.application.usecases.LoginUseCase;
+import com.omnitask.AuthAndProfiles.application.services.ClientContext;
+import com.omnitask.AuthAndProfiles.application.services.SessionService;
+import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
 
 import com.omnitask.AuthAndProfiles.application.services.IpRateLimiterService;
-import com.omnitask.AuthAndProfiles.application.services.JwtService;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.models.User;
-import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.LoginRequestDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
@@ -37,9 +38,7 @@ class LoginUseCaseTest {
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
-    private JwtService jwtService;
-    @Mock
-    private TokenRedisRepository tokenRedisRepository;
+    private SessionService sessionService;
     @Mock
     private IpRateLimiterService ipRateLimiterService;
     @Mock
@@ -47,6 +46,8 @@ class LoginUseCaseTest {
 
     @InjectMocks
     private LoginUseCase loginUseCase;
+
+    private static final ClientContext CONTEXT = new ClientContext("127.0.0.1", "Mozilla/5.0 Chrome/120", "device-1");
 
     private LoginRequestDTO request;
 
@@ -65,15 +66,15 @@ class LoginUseCaseTest {
         when(ipRateLimiterService.isBlocked("127.0.0.1")).thenReturn(false);
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(true);
-        when(jwtService.generateAccessToken("test@gmail.com", "SEEKER")).thenReturn("access-token");
-        when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
+        when(sessionService.openSession(user, CONTEXT)).thenReturn(new SessionTokens("access-token", "refresh-token"));
 
         // Act
-        AuthResponseDTO response = loginUseCase.execute(request, "127.0.0.1");
+        AuthResponseDTO response = loginUseCase.execute(request, CONTEXT);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
-        verify(tokenRedisRepository).saveRefreshToken("test@gmail.com", "refresh-token", 604800000L);
+        assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
+        verify(sessionService).openSession(user, CONTEXT);
         verify(ipRateLimiterService).resetAttempts("127.0.0.1");
         verify(eventPublisher).publish(eq(EventType.SECURITY_AUDIT), eq("test@gmail.com"),
                 argThat((SecurityAuditEvent e) -> e.action().equals("LOGIN_SUCCESS") && "127.0.0.1".equals(e.ipAddress())));
@@ -85,7 +86,7 @@ class LoginUseCaseTest {
         when(ipRateLimiterService.isBlocked("127.0.0.1")).thenReturn(true);
 
         // Act & Assert
-        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+        assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("bloqueada");
         verify(userRepository, never()).findByEmail(any());
@@ -100,7 +101,7 @@ class LoginUseCaseTest {
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.empty());
 
         // Act & Assert
-        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+        assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Credenciales inválidas");
         // Un usuario inexistente cuenta como UN solo intento fallido (antes se contaba dos veces).
@@ -119,7 +120,7 @@ class LoginUseCaseTest {
         when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(true);
 
         // Act & Assert
-        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+        assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("verificar tu cuenta");
     }
@@ -134,11 +135,11 @@ class LoginUseCaseTest {
         when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(false);
 
         // Act & Assert
-        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+        assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
                 .isInstanceOf(AuthenticationFailedException.class)
                 .hasMessageContaining("Credenciales inválidas");
         verify(ipRateLimiterService, times(1)).recordFailedAttempt("127.0.0.1");
-        verify(jwtService, never()).generateAccessToken(any(), any());
+        verify(sessionService, never()).openSession(any(), any());
     }
 
     @Test
@@ -151,11 +152,10 @@ class LoginUseCaseTest {
         when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(true);
 
         // Act & Assert
-        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+        assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
                 .isInstanceOf(AccountRestrictedException.class)
                 .hasMessageContaining("suspendida");
-        verify(jwtService, never()).generateAccessToken(any(), any());
-        verify(tokenRedisRepository, never()).saveRefreshToken(any(), any(), anyLong());
+        verify(sessionService, never()).openSession(any(), any());
     }
 
     @Test
@@ -168,7 +168,7 @@ class LoginUseCaseTest {
         when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(true);
 
         // Act & Assert
-        assertThatThrownBy(() -> loginUseCase.execute(request, "127.0.0.1"))
+        assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
                 .isInstanceOf(AccountRestrictedException.class)
                 .hasMessageContaining("bloqueada");
     }

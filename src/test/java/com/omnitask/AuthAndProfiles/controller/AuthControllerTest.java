@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.controller;
 
+import com.omnitask.AuthAndProfiles.application.services.ClientContext;
 import com.omnitask.AuthAndProfiles.application.usecases.GithubLoginUseCase;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.AuthController;
 
@@ -16,6 +17,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +48,10 @@ class AuthControllerTest {
     private ResetPasswordUseCase resetPasswordUseCase;
     @Mock
     private LogoutUseCase logoutUseCase;
+    @Mock
+    private ListSessionsUseCase listSessionsUseCase;
+    @Mock
+    private RevokeSessionUseCase revokeSessionUseCase;
     @Mock
     private Authentication authentication;
     @Mock
@@ -90,15 +97,18 @@ class AuthControllerTest {
         request.setPassword("Password1!");
         AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
 
+        ClientContext context = new ClientContext("203.0.113.5", "Mozilla/5.0 Chrome/120", "device-1");
         when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn("203.0.113.5, 10.0.0.1");
-        when(loginUseCase.execute(request, "203.0.113.5")).thenReturn(expected);
+        when(httpServletRequest.getHeader("User-Agent")).thenReturn("Mozilla/5.0 Chrome/120");
+        when(httpServletRequest.getHeader("X-Device-Id")).thenReturn("device-1");
+        when(loginUseCase.execute(request, context)).thenReturn(expected);
 
         // Act
         ResponseEntity<AuthResponseDTO> response = authController.login(request, httpServletRequest);
 
         // Assert
         assertThat(response.getBody()).isEqualTo(expected);
-        verify(loginUseCase).execute(request, "203.0.113.5");
+        verify(loginUseCase).execute(request, context);
     }
 
     @Test
@@ -107,14 +117,14 @@ class AuthControllerTest {
         LoginRequestDTO request = new LoginRequestDTO();
         when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn(null);
         when(httpServletRequest.getRemoteAddr()).thenReturn("192.168.0.10");
-        when(loginUseCase.execute(eq(request), anyString()))
+        when(loginUseCase.execute(eq(request), any(ClientContext.class)))
                 .thenReturn(new AuthResponseDTO("a", "r", "ok", "e"));
 
         // Act
         authController.login(request, httpServletRequest);
 
         // Assert
-        verify(loginUseCase).execute(request, "192.168.0.10");
+        verify(loginUseCase).execute(request, new ClientContext("192.168.0.10", null, null));
     }
 
     @Test
@@ -123,7 +133,7 @@ class AuthControllerTest {
         Map<String, String> body = Map.of();
 
         // Act & Assert
-        assertThatThrownBy(() -> authController.googleLogin(body))
+        assertThatThrownBy(() -> authController.googleLogin(body, httpServletRequest))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("El token de Google es obligatorio");
     }
@@ -192,10 +202,10 @@ class AuthControllerTest {
     void googleLogin_deberiaRetornarLaRespuestaDelUseCase_cuandoElTokenEsValido() {
         // Arrange
         AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
-        when(googleLoginUseCase.execute("google-token", true)).thenReturn(expected);
+        when(googleLoginUseCase.execute("google-token", true, new ClientContext(null, null, null))).thenReturn(expected);
 
         // Act
-        ResponseEntity<AuthResponseDTO> response = authController.googleLogin(Map.of("token", "google-token", "acceptedTerms", "true"));
+        ResponseEntity<AuthResponseDTO> response = authController.googleLogin(Map.of("token", "google-token", "acceptedTerms", "true"), httpServletRequest);
 
         // Assert
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -208,10 +218,10 @@ class AuthControllerTest {
         Map<String, String> body = Map.of("token", "   ");
 
         // Act & Assert
-        assertThatThrownBy(() -> authController.googleLogin(body))
+        assertThatThrownBy(() -> authController.googleLogin(body, httpServletRequest))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("El token de Google es obligatorio");
-        verify(googleLoginUseCase, never()).execute(anyString(), anyBoolean());
+        verify(googleLoginUseCase, never()).execute(anyString(), anyBoolean(), any());
     }
 
     @Test
@@ -246,10 +256,10 @@ class AuthControllerTest {
     void githubLogin_deberiaRetornarLaRespuestaDelUseCase_cuandoElCodigoEsValido() {
         // Arrange
         AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
-        when(githubLoginUseCase.execute("auth-code", true)).thenReturn(expected);
+        when(githubLoginUseCase.execute("auth-code", true, new ClientContext(null, null, null))).thenReturn(expected);
 
         // Act
-        ResponseEntity<AuthResponseDTO> response = authController.githubLogin(Map.of("code", "auth-code", "acceptedTerms", "true"));
+        ResponseEntity<AuthResponseDTO> response = authController.githubLogin(Map.of("code", "auth-code", "acceptedTerms", "true"), httpServletRequest);
 
         // Assert
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -262,10 +272,10 @@ class AuthControllerTest {
         Map<String, String> body = Map.of();
 
         // Act & Assert
-        assertThatThrownBy(() -> authController.githubLogin(body))
+        assertThatThrownBy(() -> authController.githubLogin(body, httpServletRequest))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("código de autorización de GitHub");
-        verify(githubLoginUseCase, never()).execute(anyString(), anyBoolean());
+        verify(githubLoginUseCase, never()).execute(anyString(), anyBoolean(), any());
     }
 
     @Test
@@ -274,30 +284,30 @@ class AuthControllerTest {
         Map<String, String> body = Map.of("code", "   ");
 
         // Act & Assert
-        assertThatThrownBy(() -> authController.githubLogin(body))
+        assertThatThrownBy(() -> authController.githubLogin(body, httpServletRequest))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("código de autorización de GitHub");
-        verify(githubLoginUseCase, never()).execute(anyString(), anyBoolean());
+        verify(githubLoginUseCase, never()).execute(anyString(), anyBoolean(), any());
     }
 
     @Test
     void googleLogin_deberiaEnviarAcceptedTermsFalse_cuandoElCampoNoViene() {
         AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
-        when(googleLoginUseCase.execute("google-token", false)).thenReturn(expected);
+        when(googleLoginUseCase.execute("google-token", false, new ClientContext(null, null, null))).thenReturn(expected);
 
-        authController.googleLogin(Map.of("token", "google-token"));
+        authController.googleLogin(Map.of("token", "google-token"), httpServletRequest);
 
-        verify(googleLoginUseCase).execute("google-token", false);
+        verify(googleLoginUseCase).execute("google-token", false, new ClientContext(null, null, null));
     }
 
     @Test
     void githubLogin_deberiaEnviarAcceptedTermsFalse_cuandoElCampoNoViene() {
         AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "ok", "test@gmail.com");
-        when(githubLoginUseCase.execute("auth-code", false)).thenReturn(expected);
+        when(githubLoginUseCase.execute("auth-code", false, new ClientContext(null, null, null))).thenReturn(expected);
 
-        authController.githubLogin(Map.of("code", "auth-code"));
+        authController.githubLogin(Map.of("code", "auth-code"), httpServletRequest);
 
-        verify(githubLoginUseCase).execute("auth-code", false);
+        verify(githubLoginUseCase).execute("auth-code", false, new ClientContext(null, null, null));
     }
 
     @Test
@@ -350,5 +360,37 @@ class AuthControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().get("message")).isEqualTo("Sesión cerrada correctamente.");
         verify(logoutUseCase).execute("test@gmail.com", "access-token", "203.0.113.5");
+    }
+
+    @Test
+    void sessions_deberiaListarLasSesionesDelUsuario_conElTokenSinElPrefijoBearer() {
+        // Arrange
+        SessionResponseDTO sesion = SessionResponseDTO.builder().id("sesion-1").deviceInfo("Chrome en Windows")
+                .ipAddress("203.0.113.5").createdAt(Instant.now()).lastActiveAt(Instant.now())
+                .current(true).build();
+        when(authentication.getName()).thenReturn("test@gmail.com");
+        when(listSessionsUseCase.execute("test@gmail.com", "access-token")).thenReturn(List.of(sesion));
+
+        // Act
+        ResponseEntity<List<SessionResponseDTO>> response = authController.sessions(authentication,
+                "Bearer access-token");
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsExactly(sesion);
+    }
+
+    @Test
+    void revokeSession_deberiaCerrarLaSesionIndicada_yResponder200() {
+        // Arrange
+        when(authentication.getName()).thenReturn("test@gmail.com");
+
+        // Act
+        ResponseEntity<Map<String, String>> response = authController.revokeSession(authentication, "sesion-2");
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("message")).isEqualTo("Sesión cerrada correctamente.");
+        verify(revokeSessionUseCase).execute("test@gmail.com", "sesion-2");
     }
 }

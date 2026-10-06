@@ -8,13 +8,14 @@ import com.omnitask.AuthAndProfiles.application.usecases.GoogleLoginUseCase;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.omnitask.AuthAndProfiles.application.services.GoogleAuthService;
-import com.omnitask.AuthAndProfiles.application.services.JwtService;
+import com.omnitask.AuthAndProfiles.application.services.ClientContext;
+import com.omnitask.AuthAndProfiles.application.services.SessionService;
+import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.models.User;
-import com.omnitask.AuthAndProfiles.domain.ports.out.redis.TokenRedisRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
@@ -29,7 +30,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,14 +45,14 @@ class GoogleLoginUseCaseTest {
     @Mock
     private GoogleAuthService googleAuthService;
     @Mock
-    private JwtService jwtService;
-    @Mock
-    private TokenRedisRepository tokenRedisRepository;
+    private SessionService sessionService;
     @Mock
     private EventPublisher eventPublisher;
 
     @InjectMocks
     private GoogleLoginUseCase googleLoginUseCase;
+
+    private static final ClientContext CONTEXT = new ClientContext("127.0.0.1", "Mozilla/5.0 Chrome/120", "device-1");
 
     private GoogleIdToken.Payload payloadFor(String email, String name) {
         GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
@@ -67,11 +67,11 @@ class GoogleLoginUseCaseTest {
         User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER).build();
         when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("test@gmail.com", "Robin"));
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
-        when(jwtService.generateAccessToken("test@gmail.com", "SEEKER")).thenReturn("access-token");
-        when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
         // Act
-        AuthResponseDTO response = googleLoginUseCase.execute("google-token", true);
+        AuthResponseDTO response = googleLoginUseCase.execute("google-token", true, CONTEXT);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -89,11 +89,11 @@ class GoogleLoginUseCaseTest {
             u.setId("user-nuevo");
             return u;
         });
-        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
         // Act
-        AuthResponseDTO response = googleLoginUseCase.execute("google-token", true);
+        AuthResponseDTO response = googleLoginUseCase.execute("google-token", true, CONTEXT);
 
         // Assert
         assertThat(response.getAccessToken()).isEqualTo("access-token");
@@ -111,11 +111,10 @@ class GoogleLoginUseCaseTest {
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
 
         // Act & Assert
-        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token", true))
+        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token", true, CONTEXT))
                 .isInstanceOf(AccountRestrictedException.class)
                 .hasMessageContaining("suspendida");
-        verify(jwtService, never()).generateAccessToken(any(), any());
-        verify(tokenRedisRepository, never()).saveRefreshToken(any(), any(), anyLong());
+        verify(sessionService, never()).openSession(any(), any());
     }
 
     @Test
@@ -127,10 +126,10 @@ class GoogleLoginUseCaseTest {
             u.setId("user-nuevo");
             return u;
         });
-        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-        when(jwtService.generateRefreshToken(any())).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
-        googleLoginUseCase.execute("google-token", true);
+        googleLoginUseCase.execute("google-token", true, CONTEXT);
 
         verify(userRepository).save(argThat((User u) -> u.isTermsAccepted()
                 && u.getTermsAcceptedAt() != null && "1.0".equals(u.getTermsVersion())));
@@ -141,13 +140,13 @@ class GoogleLoginUseCaseTest {
         when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("nuevo@gmail.com", "Nuevo Usuario"));
         when(userRepository.findByEmail("nuevo@gmail.com")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token", false))
+        assertThatThrownBy(() -> googleLoginUseCase.execute("google-token", false, CONTEXT))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("términos y condiciones");
         verify(userRepository, never()).save(any());
         verify(profileRepository, never()).save(any());
         verify(eventPublisher, never()).publish(any(), any(), any());
-        verify(jwtService, never()).generateAccessToken(any(), any());
+        verify(sessionService, never()).openSession(any(), any());
     }
 
     @Test
@@ -155,10 +154,10 @@ class GoogleLoginUseCaseTest {
         User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER).build();
         when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("test@gmail.com", "Robin"));
         when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
-        when(jwtService.generateAccessToken("test@gmail.com", "SEEKER")).thenReturn("access-token");
-        when(jwtService.generateRefreshToken("test@gmail.com")).thenReturn("refresh-token");
+        when(sessionService.openSession(any(User.class), eq(CONTEXT)))
+                .thenReturn(new SessionTokens("access-token", "refresh-token"));
 
-        AuthResponseDTO response = googleLoginUseCase.execute("google-token", false);
+        AuthResponseDTO response = googleLoginUseCase.execute("google-token", false, CONTEXT);
 
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(userRepository, never()).save(any());

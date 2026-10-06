@@ -28,14 +28,24 @@ public class JwtService {
     }
 
     public String generateAccessToken(String email, String role) {
-        return buildToken(email, role, jwtExpiration);
+        return buildToken(email, role, null, jwtExpiration);
+    }
+
+    /** Access token ligado a una sesión: el id viaja en el claim "sid" (RF-AUTH-10). */
+    public String generateAccessToken(String email, String role, String sessionId) {
+        return buildToken(email, role, sessionId, jwtExpiration);
     }
 
     public String generateRefreshToken(String email) {
-        return buildToken(email, "", refreshExpiration);
+        return buildToken(email, "", null, refreshExpiration);
     }
 
-    private String buildToken(String email, String role, long expiration) {
+    /** Refresh token ligado a una sesión: el id viaja en el claim "sid" (RF-AUTH-10). */
+    public String generateRefreshToken(String email, String sessionId) {
+        return buildToken(email, "", sessionId, refreshExpiration);
+    }
+
+    private String buildToken(String email, String role, String sessionId, long expiration) {
         var builder = Jwts.builder()
                 .subject(email)
                 .issuedAt(new Date(System.currentTimeMillis()))
@@ -44,6 +54,9 @@ public class JwtService {
 
         if (role != null && !role.isEmpty()) {
             builder.claim("role", role);
+        }
+        if (sessionId != null && !sessionId.isEmpty()) {
+            builder.claim("sid", sessionId);
         }
 
         return builder.compact();
@@ -58,8 +71,17 @@ public class JwtService {
         return extractClaim(token, claims -> claims.get("role", String.class));
     }
 
+    /** Id de la sesión a la que pertenece el token; los tokens anteriores a las sesiones devuelven null. */
+    public String extractSessionId(String token) {
+        return extractClaim(token, claims -> claims.get("sid", String.class));
+    }
+
     public long getAccessTokenExpirationMillis() {
         return jwtExpiration;
+    }
+
+    public long getRefreshTokenExpirationMillis() {
+        return refreshExpiration;
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {

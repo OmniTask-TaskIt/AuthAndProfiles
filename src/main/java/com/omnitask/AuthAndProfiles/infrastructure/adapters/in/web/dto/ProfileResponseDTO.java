@@ -5,6 +5,8 @@ import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import lombok.Builder;
 import lombok.Data;
 
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -22,7 +24,10 @@ public class ProfileResponseDTO {
     private Float reputationScore;
     private int totalReviews;
     private VerificationStatus identityVerificationStatus;
-    private VerificationStatus institutionalVerificationStatus;
+    /** RF-AUTHPR-8: tareas completadas como prestador. */
+    private int tasksCompleted;
+    /** RF-AUTHPR-8: desde cuándo es miembro (alta del perfil); el front calcula la antigüedad a partir de aquí. */
+    private Instant memberSince;
 
     public static ProfileResponseDTO fromProfile(Profile profile) {
         return ProfileResponseDTO.builder()
@@ -35,6 +40,9 @@ public class ProfileResponseDTO {
                 .reputationScore(profile.getReputationScore())
                 .totalReviews(profile.getTotalReviews())
                 .identityVerificationStatus(profile.getIdentityVerificationStatus())
+                .tasksCompleted(profile.getTasksCompleted())
+                .memberSince(profile.getCreatedAt() == null ? null
+                        : profile.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant())
                 .build();
     }
 }

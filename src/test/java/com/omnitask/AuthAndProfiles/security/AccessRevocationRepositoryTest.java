@@ -90,4 +90,22 @@ class AccessRevocationRepositoryTest {
 
         assertThat(accessRevocationRepository.isTokenRevoked("access-token")).isFalse();
     }
+
+    @Test
+    void revokeSession_deberiaGuardarLaMarcaDeLaSesionConElTtlIndicado() {
+        accessRevocationRepository.revokeSession("sesion-1", 900000L);
+
+        verify(valueOperations).set("revoked_session:sesion-1", "REVOKED", Duration.ofMillis(900000L));
+    }
+
+    @Test
+    void isSessionRevoked_deberiaRetornarTrue_soloCuandoExisteLaMarca() {
+        when(redisTemplate.hasKey("revoked_session:sesion-1")).thenReturn(true);
+        when(redisTemplate.hasKey("revoked_session:sesion-2")).thenReturn(false);
+        when(redisTemplate.hasKey("revoked_session:sesion-3")).thenReturn(null);
+
+        assertThat(accessRevocationRepository.isSessionRevoked("sesion-1")).isTrue();
+        assertThat(accessRevocationRepository.isSessionRevoked("sesion-2")).isFalse();
+        assertThat(accessRevocationRepository.isSessionRevoked("sesion-3")).isFalse();
+    }
 }
