@@ -38,6 +38,9 @@ public class User {
     private String termsVersion;
     private AccountStatus accountStatus;
 
+    /** RF-AUTH-9: si está activo, el inicio de sesión exige un código enviado al correo. */
+    private boolean twoFactorEnabled;
+
     private int failedLoginAttempts;
     private String blockReason;
 

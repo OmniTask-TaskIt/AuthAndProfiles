@@ -305,4 +305,45 @@ class ResendEmailServiceTest {
             Thread.interrupted(); // limpia la marca para no afectar a otros tests
         }
     }
+
+    @Test
+    void sendTwoFactorCodeEmail_deberiaEnviarElCodigoConSuVigencia() {
+        server.expect(requestTo("https://api.resend.com/emails"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.to[0]").value("destino@gmail.com"))
+                .andExpect(jsonPath("$.subject", containsString("dos pasos")))
+                .andExpect(jsonPath("$.html", containsString("654321")))
+                .andExpect(jsonPath("$.html", containsString("expirará en 5 minutos")))
+                .andRespond(withSuccess("{\"id\":\"abc\"}", MediaType.APPLICATION_JSON));
+
+        assertThatCode(() -> resendEmailService.sendTwoFactorCodeEmail("destino@gmail.com", "654321", 5))
+                .doesNotThrowAnyException();
+        server.verify();
+    }
+
+    @Test
+    void sendTwoFactorCodeEmail_deberiaLanzarExternalServiceException_cuandoResendResponde500() {
+        server.expect(requestTo("https://api.resend.com/emails")).andRespond(withServerError());
+
+        assertThatThrownBy(() -> resendEmailService.sendTwoFactorCodeEmail("destino@gmail.com", "654321", 5))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Error al enviar el código de verificación en dos pasos");
+        server.verify();
+    }
+
+@Test
+    void send_deberiaAgotarTodosLosIntentosYCubrirLaCondicionDelBucle_cuandoFallaHastaElMaximo() {
+        // Arrange: Aseguramos que los intentos se agoten completamente para cubrir la rama del bucle
+        ReflectionTestUtils.setField(resendEmailService, "maxAttempts", 2);
+        ReflectionTestUtils.setField(resendEmailService, "retryBackoffMs", 0L);
+
+        server.expect(ExpectedCount.times(2), requestTo("https://api.resend.com/emails"))
+                .andRespond(withServerError());
+
+        // Act & Assert
+        assertThatThrownBy(() -> resendEmailService.sendOtpEmail("destino@gmail.com", "123456"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Error al enviar el correo de verificación");
+        server.verify();
+    }
 }

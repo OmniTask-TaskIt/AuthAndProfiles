@@ -10,6 +10,7 @@ import com.omnitask.AuthAndProfiles.application.usecases.LoginUseCase;
 import com.omnitask.AuthAndProfiles.application.services.ClientContext;
 import com.omnitask.AuthAndProfiles.application.services.SessionService;
 import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
+import com.omnitask.AuthAndProfiles.application.services.TwoFactorService;
 
 import com.omnitask.AuthAndProfiles.application.services.IpRateLimiterService;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
@@ -39,6 +40,8 @@ class LoginUseCaseTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private SessionService sessionService;
+    @Mock
+    private TwoFactorService twoFactorService;
     @Mock
     private IpRateLimiterService ipRateLimiterService;
     @Mock
@@ -171,5 +174,44 @@ class LoginUseCaseTest {
         assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
                 .isInstanceOf(AccountRestrictedException.class)
                 .hasMessageContaining("bloqueada");
+    }
+
+    @Test
+    void execute_deberiaPedirElSegundoFactorSinEmitirTokens_cuandoLaCuentaTiene2FA() {
+        // Arrange
+        User user = User.builder().email("test@gmail.com").passwordHash("hashed").role(Role.SEEKER)
+                .emailVerified(true).twoFactorEnabled(true).build();
+        when(ipRateLimiterService.isBlocked("127.0.0.1")).thenReturn(false);
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(true);
+        when(twoFactorService.startLoginChallenge("test@gmail.com")).thenReturn("challenge-1");
+
+        // Act
+        AuthResponseDTO response = loginUseCase.execute(request, CONTEXT);
+
+        // Assert: contraseña correcta pero todavía sin sesión ni tokens
+        assertThat(response.isTwoFactorRequired()).isTrue();
+        assertThat(response.getChallengeId()).isEqualTo("challenge-1");
+        assertThat(response.getAccessToken()).isNull();
+        assertThat(response.getRefreshToken()).isNull();
+        verify(sessionService, never()).openSession(any(), any());
+        verify(ipRateLimiterService).resetAttempts("127.0.0.1");
+        verify(eventPublisher).publish(eq(EventType.SECURITY_AUDIT), eq("test@gmail.com"),
+                argThat((SecurityAuditEvent e) -> e.action().equals("LOGIN_2FA_REQUIRED")));
+        verify(eventPublisher, never()).publish(eq(EventType.SECURITY_AUDIT), any(),
+                argThat((SecurityAuditEvent e) -> e.action().equals("LOGIN_SUCCESS")));
+    }
+
+    @Test
+    void execute_noDeberiaAbrirRetoDe2FA_cuandoLaContrasenaEsIncorrecta() {
+        User user = User.builder().email("test@gmail.com").passwordHash("hashed").role(Role.SEEKER)
+                .emailVerified(true).twoFactorEnabled(true).build();
+        when(ipRateLimiterService.isBlocked("127.0.0.1")).thenReturn(false);
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Password1!", "hashed")).thenReturn(false);
+
+        assertThatThrownBy(() -> loginUseCase.execute(request, CONTEXT))
+                .isInstanceOf(AuthenticationFailedException.class);
+        verify(twoFactorService, never()).startLoginChallenge(any());
     }
 }

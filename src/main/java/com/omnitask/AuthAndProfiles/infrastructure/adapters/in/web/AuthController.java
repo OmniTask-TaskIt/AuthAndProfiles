@@ -12,7 +12,10 @@ import com.omnitask.AuthAndProfiles.application.usecases.RegisterUserUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.ResendOtpUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.ResetPasswordUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.RevokeSessionUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.TwoFactorSettingsUseCase;
 import com.omnitask.AuthAndProfiles.application.usecases.VerifyOtpUseCase;
+import com.omnitask.AuthAndProfiles.application.usecases.VerifyTwoFactorLoginUseCase;
+import com.omnitask.AuthAndProfiles.domain.enums.TwoFactorAction;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.*;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,6 +46,8 @@ public class AuthController {
     private final LogoutUseCase logoutUseCase;
     private final ListSessionsUseCase listSessionsUseCase;
     private final RevokeSessionUseCase revokeSessionUseCase;
+    private final TwoFactorSettingsUseCase twoFactorSettingsUseCase;
+    private final VerifyTwoFactorLoginUseCase verifyTwoFactorLoginUseCase;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDTO request) {
@@ -115,6 +120,49 @@ public class AuthController {
             @PathVariable String sessionId) {
         revokeSessionUseCase.execute(authentication.getName(), sessionId);
         return ResponseEntity.ok(Map.of("message", "Sesión cerrada correctamente."));
+    }
+
+    /** RF-AUTH-9, segundo paso del login: canjea el reto y el código enviado por correo por los tokens de la sesión. */
+    @PostMapping("/2fa/verify-login")
+    public ResponseEntity<AuthResponseDTO> verifyTwoFactorLogin(@Valid @RequestBody TwoFactorLoginRequestDTO request,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(verifyTwoFactorLoginUseCase.execute(request, getClientContext(httpRequest)));
+    }
+
+    /** RF-AUTH-9: ¿tiene el usuario activada la verificación en dos pasos? */
+    @GetMapping("/2fa/status")
+    public ResponseEntity<Map<String, Object>> twoFactorStatus(Authentication authentication) {
+        return ResponseEntity.ok(Map.of("enabled", twoFactorSettingsUseCase.isEnabled(authentication.getName())));
+    }
+
+    /** RF-AUTH-9, paso 1 de activar: envía el código de confirmación al correo. */
+    @PostMapping("/2fa/enable")
+    public ResponseEntity<Map<String, String>> requestEnableTwoFactor(Authentication authentication) {
+        twoFactorSettingsUseCase.requestCode(authentication.getName(), TwoFactorAction.ENABLE);
+        return ResponseEntity.ok(Map.of("message", "Te enviamos un código de verificación a tu correo."));
+    }
+
+    /** RF-AUTH-9, paso 2 de activar: con el código correcto el segundo factor queda activo. */
+    @PostMapping("/2fa/enable/confirm")
+    public ResponseEntity<Map<String, String>> confirmEnableTwoFactor(Authentication authentication,
+            @Valid @RequestBody TwoFactorCodeRequestDTO request) {
+        twoFactorSettingsUseCase.confirm(authentication.getName(), request.getCode(), TwoFactorAction.ENABLE);
+        return ResponseEntity.ok(Map.of("message", "Verificación en dos pasos activada."));
+    }
+
+    /** RF-AUTH-9, paso 1 de desactivar: envía el código de confirmación al correo. */
+    @PostMapping("/2fa/disable")
+    public ResponseEntity<Map<String, String>> requestDisableTwoFactor(Authentication authentication) {
+        twoFactorSettingsUseCase.requestCode(authentication.getName(), TwoFactorAction.DISABLE);
+        return ResponseEntity.ok(Map.of("message", "Te enviamos un código de verificación a tu correo."));
+    }
+
+    /** RF-AUTH-9, paso 2 de desactivar: con el código correcto el segundo factor queda desactivado. */
+    @PostMapping("/2fa/disable/confirm")
+    public ResponseEntity<Map<String, String>> confirmDisableTwoFactor(Authentication authentication,
+            @Valid @RequestBody TwoFactorCodeRequestDTO request) {
+        twoFactorSettingsUseCase.confirm(authentication.getName(), request.getCode(), TwoFactorAction.DISABLE);
+        return ResponseEntity.ok(Map.of("message", "Verificación en dos pasos desactivada."));
     }
 
     /** IP, User-Agent y X-Device-Id (identificador estable que genera el front) del cliente. */

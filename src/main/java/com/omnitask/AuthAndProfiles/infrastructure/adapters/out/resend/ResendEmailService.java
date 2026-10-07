@@ -113,6 +113,20 @@ public class ResendEmailService {
                 "inicio de sesión sospechoso", "Error al enviar el aviso de inicio de sesión sospechoso");
     }
 
+    /** Código del segundo factor (RF-AUTH-9): activar, desactivar o completar un inicio de sesión. */
+    public void sendTwoFactorCodeEmail(String toEmail, String code, int expiresInMinutes) {
+        String html = "<div style='font-family: Arial, sans-serif; padding: 20px;'>" +
+                "<h2>Verificación en dos pasos</h2>" +
+                "<p>Tu código de verificación es:</p>" +
+                "<h1 style='color: #4F46E5; letter-spacing: 2px;'>" + code + "</h1>" +
+                "<p>Este código expirará en " + expiresInMinutes + " minutos.</p>" +
+                "<p>Si no fuiste tú, ignora este mensaje y cambia tu contraseña.</p>" +
+                "</div>";
+
+        send(toEmail, "Código de verificación en dos pasos - TaskIt Platform", html,
+                "verificación en dos pasos", "Error al enviar el código de verificación en dos pasos");
+    }
+
     private void send(String toEmail, String subject, String html, String label, String failureMessage) {
         if (!emailEnabled) {
             log.info("[SEC-AUTH] [RESEND] Envío de correo deshabilitado (app.email.enabled=false); correo de {} para {} no enviado (el código, si aplica, queda disponible en Redis)",

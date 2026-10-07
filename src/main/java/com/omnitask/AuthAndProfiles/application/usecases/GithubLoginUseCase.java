@@ -5,6 +5,7 @@ import com.omnitask.AuthAndProfiles.application.services.GithubProfile;
 import com.omnitask.AuthAndProfiles.application.services.ClientContext;
 import com.omnitask.AuthAndProfiles.application.services.SessionService;
 import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
+import com.omnitask.AuthAndProfiles.application.services.TwoFactorService;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
@@ -41,6 +42,7 @@ public class GithubLoginUseCase {
     private final ProfileRepository profileRepository;
     private final GithubAuthService githubAuthService;
     private final SessionService sessionService;
+    private final TwoFactorService twoFactorService;
     private final EventPublisher eventPublisher;
 
     public AuthResponseDTO execute(String code, boolean acceptedTerms, ClientContext context) {
@@ -103,6 +105,12 @@ public class GithubLoginUseCase {
         });
 
         AccountAccessPolicy.ensureNotRestricted(user);
+
+        // RF-AUTH-9: el segundo factor también aplica al acceso con Google/GitHub; si no, bastaría con entrar por ahí.
+        if (user.isTwoFactorEnabled()) {
+            return AuthResponseDTO.twoFactorChallenge(user.getEmail(),
+                    twoFactorService.startLoginChallenge(user.getEmail()));
+        }
 
         SessionTokens tokens = sessionService.openSession(user, context);
 

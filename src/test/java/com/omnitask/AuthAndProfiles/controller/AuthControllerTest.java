@@ -1,6 +1,7 @@
 package com.omnitask.AuthAndProfiles.controller;
 
 import com.omnitask.AuthAndProfiles.application.services.ClientContext;
+import com.omnitask.AuthAndProfiles.domain.enums.TwoFactorAction;
 import com.omnitask.AuthAndProfiles.application.usecases.GithubLoginUseCase;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.AuthController;
 
@@ -52,6 +53,10 @@ class AuthControllerTest {
     private ListSessionsUseCase listSessionsUseCase;
     @Mock
     private RevokeSessionUseCase revokeSessionUseCase;
+    @Mock
+    private TwoFactorSettingsUseCase twoFactorSettingsUseCase;
+    @Mock
+    private VerifyTwoFactorLoginUseCase verifyTwoFactorLoginUseCase;
     @Mock
     private Authentication authentication;
     @Mock
@@ -392,5 +397,81 @@ class AuthControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().get("message")).isEqualTo("Sesión cerrada correctamente.");
         verify(revokeSessionUseCase).execute("test@gmail.com", "sesion-2");
+    }
+
+    @Test
+    void verifyTwoFactorLogin_deberiaCanjearElRetoPorLosTokensDeLaSesion() {
+        // Arrange
+        TwoFactorLoginRequestDTO request = new TwoFactorLoginRequestDTO();
+        request.setChallengeId("challenge-1");
+        request.setCode("123456");
+        AuthResponseDTO expected = new AuthResponseDTO("access", "refresh", "Inicio de sesión exitoso", "test@gmail.com");
+        when(httpServletRequest.getHeader("X-Forwarded-For")).thenReturn("203.0.113.5");
+        when(verifyTwoFactorLoginUseCase.execute(request, new ClientContext("203.0.113.5", null, null)))
+                .thenReturn(expected);
+
+        // Act
+        ResponseEntity<AuthResponseDTO> response = authController.verifyTwoFactorLogin(request, httpServletRequest);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isSameAs(expected);
+    }
+
+    @Test
+    void twoFactorStatus_deberiaIndicarSiEstaActivado() {
+        when(authentication.getName()).thenReturn("test@gmail.com");
+        when(twoFactorSettingsUseCase.isEnabled("test@gmail.com")).thenReturn(true);
+
+        ResponseEntity<Map<String, Object>> response = authController.twoFactorStatus(authentication);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsEntry("enabled", true);
+    }
+
+    @Test
+    void requestEnableTwoFactor_deberiaEnviarElCodigoDeActivacion() {
+        when(authentication.getName()).thenReturn("test@gmail.com");
+
+        ResponseEntity<Map<String, String>> response = authController.requestEnableTwoFactor(authentication);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(twoFactorSettingsUseCase).requestCode("test@gmail.com", TwoFactorAction.ENABLE);
+    }
+
+    @Test
+    void confirmEnableTwoFactor_deberiaActivarConElCodigo() {
+        when(authentication.getName()).thenReturn("test@gmail.com");
+        TwoFactorCodeRequestDTO request = new TwoFactorCodeRequestDTO();
+        request.setCode("123456");
+
+        ResponseEntity<Map<String, String>> response = authController.confirmEnableTwoFactor(authentication, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("message")).isEqualTo("Verificación en dos pasos activada.");
+        verify(twoFactorSettingsUseCase).confirm("test@gmail.com", "123456", TwoFactorAction.ENABLE);
+    }
+
+    @Test
+    void requestDisableTwoFactor_deberiaEnviarElCodigoDeDesactivacion() {
+        when(authentication.getName()).thenReturn("test@gmail.com");
+
+        ResponseEntity<Map<String, String>> response = authController.requestDisableTwoFactor(authentication);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(twoFactorSettingsUseCase).requestCode("test@gmail.com", TwoFactorAction.DISABLE);
+    }
+
+    @Test
+    void confirmDisableTwoFactor_deberiaDesactivarConElCodigo() {
+        when(authentication.getName()).thenReturn("test@gmail.com");
+        TwoFactorCodeRequestDTO request = new TwoFactorCodeRequestDTO();
+        request.setCode("123456");
+
+        ResponseEntity<Map<String, String>> response = authController.confirmDisableTwoFactor(authentication, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().get("message")).isEqualTo("Verificación en dos pasos desactivada.");
+        verify(twoFactorSettingsUseCase).confirm("test@gmail.com", "123456", TwoFactorAction.DISABLE);
     }
 }

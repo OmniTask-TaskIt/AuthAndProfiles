@@ -11,6 +11,7 @@ import com.omnitask.AuthAndProfiles.application.services.GoogleAuthService;
 import com.omnitask.AuthAndProfiles.application.services.ClientContext;
 import com.omnitask.AuthAndProfiles.application.services.SessionService;
 import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
+import com.omnitask.AuthAndProfiles.application.services.TwoFactorService;
 import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
@@ -46,6 +47,8 @@ class GoogleLoginUseCaseTest {
     private GoogleAuthService googleAuthService;
     @Mock
     private SessionService sessionService;
+    @Mock
+    private TwoFactorService twoFactorService;
     @Mock
     private EventPublisher eventPublisher;
 
@@ -161,5 +164,24 @@ class GoogleLoginUseCaseTest {
 
         assertThat(response.getAccessToken()).isEqualTo("access-token");
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_deberiaPedirElSegundoFactor_cuandoLaCuentaTiene2FA() {
+        // Arrange: sin esto, bastaría con entrar por Google para saltarse el segundo factor
+        User user = User.builder().id("user-1").email("test@gmail.com").role(Role.SEEKER)
+                .twoFactorEnabled(true).build();
+        when(googleAuthService.verifyToken("google-token")).thenReturn(payloadFor("test@gmail.com", "Robin"));
+        when(userRepository.findByEmail("test@gmail.com")).thenReturn(Optional.of(user));
+        when(twoFactorService.startLoginChallenge("test@gmail.com")).thenReturn("challenge-1");
+
+        // Act
+        AuthResponseDTO response = googleLoginUseCase.execute("google-token", true, CONTEXT);
+
+        // Assert
+        assertThat(response.isTwoFactorRequired()).isTrue();
+        assertThat(response.getChallengeId()).isEqualTo("challenge-1");
+        assertThat(response.getAccessToken()).isNull();
+        verify(sessionService, never()).openSession(any(), any());
     }
 }

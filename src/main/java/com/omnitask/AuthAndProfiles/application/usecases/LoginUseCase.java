@@ -8,6 +8,7 @@ import com.omnitask.AuthAndProfiles.application.services.IpRateLimiterService;
 import com.omnitask.AuthAndProfiles.application.services.ClientContext;
 import com.omnitask.AuthAndProfiles.application.services.SessionService;
 import com.omnitask.AuthAndProfiles.application.services.SessionTokens;
+import com.omnitask.AuthAndProfiles.application.services.TwoFactorService;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.TooManyAttemptsException;
@@ -29,6 +30,7 @@ public class LoginUseCase {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final SessionService sessionService;
+    private final TwoFactorService twoFactorService;
     private final IpRateLimiterService ipRateLimiterService;
     private final EventPublisher eventPublisher;
 
@@ -62,6 +64,14 @@ public class LoginUseCase {
         }
 
         ipRateLimiterService.resetAttempts(clientIp);
+
+        // RF-AUTH-9: con el segundo factor activo todavía no hay sesión; se abre un reto y se envía el código al correo.
+        if (user.isTwoFactorEnabled()) {
+            String challengeId = twoFactorService.startLoginChallenge(user.getEmail());
+            audit("LOGIN_2FA_REQUIRED", user.getEmail(), clientIp);
+            log.info("[AUTH] [SEC-AUTH-02] Credenciales correctas, falta el segundo factor para: {}", user.getEmail());
+            return AuthResponseDTO.twoFactorChallenge(user.getEmail(), challengeId);
+        }
 
         // Crea la sesión del dispositivo (RF-AUTH-10/13), emite los tokens y avisa si el dispositivo es nuevo (RF-AUTH-11).
         SessionTokens tokens = sessionService.openSession(user, context);
