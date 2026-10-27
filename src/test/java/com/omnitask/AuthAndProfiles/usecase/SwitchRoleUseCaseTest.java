@@ -61,6 +61,20 @@ class SwitchRoleUseCaseTest {
     }
 
     @Test
+    void execute_deberiaLanzarExcepcion_cuandoElUsuarioEsAdminYQuiereCambiarDeRol() {
+        // Arrange
+        User admin = User.builder().email("admin@gmail.com").role(Role.ADMIN).build();
+        when(userRepository.findByEmail("admin@gmail.com")).thenReturn(Optional.of(admin));
+
+        // Act & Assert
+        assertThatThrownBy(() -> switchRoleUseCase.execute("admin@gmail.com", Role.SEEKER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("administrador");
+        assertThat(admin.getRole()).isEqualTo(Role.ADMIN);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void execute_deberiaLanzarExcepcion_cuandoElUsuarioNoExiste() {
         // Arrange
         when(userRepository.findByEmail("noexiste@gmail.com")).thenReturn(Optional.empty());

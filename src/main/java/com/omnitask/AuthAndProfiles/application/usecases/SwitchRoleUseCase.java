@@ -22,6 +22,10 @@ public class SwitchRoleUseCase {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
 
+        if (user.getRole() == Role.ADMIN) {
+            throw new IllegalArgumentException("Un administrador no puede cambiar su rol.");
+        }
+        
         if (newRole == Role.ADMIN) {
             throw new IllegalArgumentException("No se puede asignar el rol de administrador por cambio dinámico.");
         }

@@ -141,7 +141,10 @@ public class ResendEmailService {
         String idempotencyKey = UUID.randomUUID().toString();
 
         int attempts = Math.max(1, maxAttempts);
-        for (int attempt = 1; attempt <= attempts; attempt++) {
+        
+        // Sin condición de salida: el bucle termina siempre por el return (éxito) o por el throw (error
+        // permanente o último intento agotado), así que no existe un "fin natural" del bucle que cubrir.
+        for (int attempt = 1; ; attempt++) {
             try {
                 restClient.post()
                         .uri("/emails")
