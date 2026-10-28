@@ -2,7 +2,7 @@ package com.omnitask.AuthAndProfiles.usecase;
 
 import com.omnitask.AuthAndProfiles.application.usecases.UploadPhotoUseCase;
 
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ class UploadPhotoUseCaseTest {
     @Mock
     private ProfileRepository profileRepository;
     @Mock
-    private AzureBlobService azureBlobService;
+    private S3StorageService storageService;
 
     @InjectMocks
     private UploadPhotoUseCase uploadPhotoUseCase;
@@ -40,7 +40,7 @@ class UploadPhotoUseCaseTest {
         // Arrange
         MultipartFile file = new MockMultipartFile("file", "foto.png", "image/png", new byte[] { 1, 2, 3 });
         Profile profile = Profile.builder().userId("user-1").build();
-        when(azureBlobService.uploadFile(file)).thenReturn("https://blob/foto.png");
+        when(storageService.uploadFile(file)).thenReturn("https://blob/foto.png");
         when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
         when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -61,14 +61,14 @@ class UploadPhotoUseCaseTest {
         assertThatThrownBy(() -> uploadPhotoUseCase.execute("user-1", fileVacio))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("vacío");
-        verify(azureBlobService, never()).uploadFile(any());
+        verify(storageService, never()).uploadFile(any());
     }
 
     @Test
     void execute_deberiaCrearUnPerfilNuevoConLaFoto_cuandoNoExisteUnoParaElUsuario() {
         // Arrange
         MultipartFile file = new MockMultipartFile("file", "foto.png", "image/png", new byte[] { 1, 2, 3 });
-        when(azureBlobService.uploadFile(file)).thenReturn("https://blob/foto.png");
+        when(storageService.uploadFile(file)).thenReturn("https://blob/foto.png");
         when(profileRepository.findByUserId("user-1")).thenReturn(Optional.empty());
         when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
 

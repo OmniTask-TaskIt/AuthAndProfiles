@@ -1,6 +1,6 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.application.services.IdentityDocumentValidator;
 import com.omnitask.AuthAndProfiles.application.services.ValidatedDocument;
 import com.omnitask.AuthAndProfiles.application.usecases.SubmitIdentityDocumentUseCase;
@@ -45,7 +45,7 @@ class SubmitIdentityDocumentUseCaseTest {
     @Mock
     private IdentityDocumentValidator identityDocumentValidator;
     @Mock
-    private AzureBlobService azureBlobService;
+    private S3StorageService storageService;
     @Mock
     private EventPublisher eventPublisher;
 
@@ -73,7 +73,7 @@ class SubmitIdentityDocumentUseCaseTest {
         Profile profile = Profile.builder().userId("user-1").fullName("Robin")
                 .identityVerificationStatus(VerificationStatus.UNVERIFIED).build();
         when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
-        when(azureBlobService.uploadIdentityDocument("user-1", file, pdf)).thenReturn("user-1/abc.pdf");
+        when(storageService.uploadIdentityDocument("user-1", file, pdf)).thenReturn("user-1/abc.pdf");
         when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Profile result = submitIdentityDocumentUseCase.execute("user-1", DocumentType.CEDULA, file);
@@ -85,7 +85,7 @@ class SubmitIdentityDocumentUseCaseTest {
         assertThat(result.getDocumentSizeBytes()).isEqualTo(3L);
         assertThat(result.getDocumentSubmittedAt()).isNotNull();
         assertThat(result.getVerificationReason()).isNull();
-        verify(azureBlobService, never()).deleteIdentityDocument(any());
+        verify(storageService, never()).deleteIdentityDocument(any());
 
         ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
         verify(eventPublisher).publish(eq(EventType.IDENTITY_DOCUMENT_SUBMITTED), eq("user-1"), payload.capture());
@@ -104,7 +104,7 @@ class SubmitIdentityDocumentUseCaseTest {
         Profile profile = Profile.builder().userId("user-1").documentBlobName("user-1/viejo.pdf")
                 .verificationReason("Ilegible").identityVerificationStatus(VerificationStatus.REJECTED).build();
         when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
-        when(azureBlobService.uploadIdentityDocument("user-1", file, pdf)).thenReturn("user-1/nuevo.pdf");
+        when(storageService.uploadIdentityDocument("user-1", file, pdf)).thenReturn("user-1/nuevo.pdf");
         when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Profile result = submitIdentityDocumentUseCase.execute("user-1", DocumentType.PASSPORT, file);
@@ -112,7 +112,7 @@ class SubmitIdentityDocumentUseCaseTest {
         assertThat(result.getIdentityVerificationStatus()).isEqualTo(VerificationStatus.PENDING_REVIEW);
         assertThat(result.getDocumentBlobName()).isEqualTo("user-1/nuevo.pdf");
         assertThat(result.getVerificationReason()).isNull();
-        verify(azureBlobService).deleteIdentityDocument("user-1/viejo.pdf");
+        verify(storageService).deleteIdentityDocument("user-1/viejo.pdf");
     }
 
     @Test
@@ -120,12 +120,12 @@ class SubmitIdentityDocumentUseCaseTest {
         stubValidAndExistingUser();
         Profile profile = Profile.builder().userId("user-1").documentBlobName("  ").build();
         when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
-        when(azureBlobService.uploadIdentityDocument("user-1", file, pdf)).thenReturn("user-1/abc.pdf");
+        when(storageService.uploadIdentityDocument("user-1", file, pdf)).thenReturn("user-1/abc.pdf");
         when(profileRepository.save(any(Profile.class))).thenAnswer(inv -> inv.getArgument(0));
 
         submitIdentityDocumentUseCase.execute("user-1", DocumentType.CEDULA, file);
 
-        verify(azureBlobService, never()).deleteIdentityDocument(any());
+        verify(storageService, never()).deleteIdentityDocument(any());
     }
 
     @Test
@@ -138,7 +138,7 @@ class SubmitIdentityDocumentUseCaseTest {
         assertThatThrownBy(() -> submitIdentityDocumentUseCase.execute("user-1", DocumentType.CEDULA, file))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ya está verificada");
-        verifyNoInteractions(azureBlobService, eventPublisher);
+        verifyNoInteractions(storageService, eventPublisher);
     }
 
     @Test
@@ -151,7 +151,7 @@ class SubmitIdentityDocumentUseCaseTest {
         assertThatThrownBy(() -> submitIdentityDocumentUseCase.execute("user-1", DocumentType.CEDULA, file))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("en revisión");
-        verifyNoInteractions(azureBlobService, eventPublisher);
+        verifyNoInteractions(storageService, eventPublisher);
     }
 
     @Test
@@ -172,7 +172,7 @@ class SubmitIdentityDocumentUseCaseTest {
         assertThatThrownBy(() -> submitIdentityDocumentUseCase.execute("user-1", DocumentType.CEDULA, file))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("Perfil no encontrado");
-        verifyNoInteractions(azureBlobService, eventPublisher);
+        verifyNoInteractions(storageService, eventPublisher);
     }
 
     @Test
@@ -182,6 +182,6 @@ class SubmitIdentityDocumentUseCaseTest {
         assertThatThrownBy(() -> submitIdentityDocumentUseCase.execute("user-1", DocumentType.CEDULA, file))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Formato no permitido");
-        verifyNoInteractions(userRepository, profileRepository, azureBlobService, eventPublisher);
+        verifyNoInteractions(userRepository, profileRepository, storageService, eventPublisher);
     }
 }

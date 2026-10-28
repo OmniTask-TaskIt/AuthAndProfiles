@@ -3,7 +3,7 @@ package com.omnitask.AuthAndProfiles.usecase;
 import com.omnitask.AuthAndProfiles.domain.events.AccountDeletedEvent;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.application.usecases.DeleteAccountUseCase;
 
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
@@ -32,7 +32,7 @@ class DeleteAccountUseCaseTest {
     @Mock
     private TokenRedisRepository tokenRedisRepository;
     @Mock
-    private AzureBlobService azureBlobService;
+    private S3StorageService storageService;
     @Mock
     private EventPublisher eventPublisher;
 
@@ -54,7 +54,7 @@ class DeleteAccountUseCaseTest {
         verify(tokenRedisRepository).deleteRefreshToken("test@gmail.com");
         verify(profileRepository).delete(profile);
         verify(userRepository).delete(user);
-        verify(azureBlobService, never()).deleteIdentityDocument(any());
+        verify(storageService, never()).deleteIdentityDocument(any());
         verify(eventPublisher).publish(eq(EventType.ACCOUNT_DELETED), eq("user-1"),
                 argThat((AccountDeletedEvent e) -> e.email().equals("test@gmail.com")));
     }
@@ -71,7 +71,7 @@ class DeleteAccountUseCaseTest {
         deleteAccountUseCase.execute("test@gmail.com");
 
         // Assert
-        verify(azureBlobService).deleteIdentityDocument("user-1/abc.pdf");
+        verify(storageService).deleteIdentityDocument("user-1/abc.pdf");
         verify(profileRepository).delete(profile);
     }
 
@@ -86,7 +86,7 @@ class DeleteAccountUseCaseTest {
 
         deleteAccountUseCase.execute("test@gmail.com");
 
-        verify(azureBlobService, never()).deleteIdentityDocument(any());
+        verify(storageService, never()).deleteIdentityDocument(any());
         verify(profileRepository).delete(profile);
     }
 

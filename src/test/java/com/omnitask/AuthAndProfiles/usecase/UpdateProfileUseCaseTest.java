@@ -2,7 +2,7 @@ package com.omnitask.AuthAndProfiles.usecase;
 
 import com.omnitask.AuthAndProfiles.application.usecases.UpdateProfileUseCase;
 
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;

@@ -1,7 +1,7 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
 import java.time.Instant;
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.domain.events.AccountDeletedEvent;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
@@ -21,7 +21,7 @@ public class DeleteAccountUseCase {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final TokenRedisRepository tokenRedisRepository;
-    private final AzureBlobService azureBlobService;
+    private final S3StorageService storageService;
     private final EventPublisher eventPublisher;
 
     public void execute(String email) {
@@ -32,7 +32,7 @@ public class DeleteAccountUseCase {
         profileRepository.findByUserId(user.getId()).ifPresent(profile -> {
             String blobName = profile.getDocumentBlobName();
             if (blobName != null && !blobName.isBlank()) {
-                azureBlobService.deleteIdentityDocument(blobName);
+                storageService.deleteIdentityDocument(blobName);
             }
             profileRepository.delete(profile);
         });

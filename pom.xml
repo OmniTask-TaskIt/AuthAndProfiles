@@ -20,8 +20,22 @@
         <java.version>17</java.version>
         <lombok.version>1.18.38</lombok.version>
         <jjwt.version>0.12.5</jjwt.version>
+        <httpclient5.version>5.5</httpclient5.version>
+        <httpcore5.version>5.3.4</httpcore5.version>
     </properties>
     
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>2.57.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <!-- Spring Boot Starters -->
         <dependency>
@@ -84,11 +98,10 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
-        <!-- Azure Storage Blob -->
+        <!-- Amazon S3 (AWS SDK v2; la versión la fija el BOM de dependencyManagement) -->
         <dependency>
-            <groupId>com.azure</groupId>
-            <artifactId>azure-storage-blob</artifactId>
-            <version>12.28.1</version>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
         </dependency>
 
         <!-- Dependencia HTTP y GSON para que reconozca JsonFactory y GsonFactory -->

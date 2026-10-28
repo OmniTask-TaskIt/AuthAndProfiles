@@ -1,6 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.application.services.IdentityDocumentValidator;
 import com.omnitask.AuthAndProfiles.application.services.ValidatedDocument;
 import com.omnitask.AuthAndProfiles.domain.enums.DocumentType;
@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 
 /**
  * El usuario envía su documento de identidad a verificación: se valida, se guarda en el contenedor privado
- * de Azure Blob, el perfil pasa a PENDING_REVIEW y se publica IdentityDocumentSubmitted para que
+ * de Amazon S3, el perfil pasa a PENDING_REVIEW y se publica IdentityDocumentSubmitted para que
  * Security and Audit HITL lo revise.
  */
 @Slf4j
@@ -34,7 +34,7 @@ public class SubmitIdentityDocumentUseCase {
     private final ProfileRepository profileRepository;
     private final UserRepository userRepository;
     private final IdentityDocumentValidator identityDocumentValidator;
-    private final AzureBlobService azureBlobService;
+    private final S3StorageService storageService;
     private final EventPublisher eventPublisher;
 
     public Profile execute(String userId, DocumentType documentType, MultipartFile file) {
@@ -54,9 +54,9 @@ public class SubmitIdentityDocumentUseCase {
         }
 
         String previousBlobName = profile.getDocumentBlobName();
-        String blobName = azureBlobService.uploadIdentityDocument(userId, file, document);
+        String blobName = storageService.uploadIdentityDocument(userId, file, document);
         if (previousBlobName != null && !previousBlobName.isBlank()) {
-            azureBlobService.deleteIdentityDocument(previousBlobName);
+            storageService.deleteIdentityDocument(previousBlobName);
         }
 
         profile.setDocumentBlobName(blobName);

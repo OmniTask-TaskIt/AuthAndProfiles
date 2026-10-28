@@ -1,0 +1,61 @@
+# Construye la imagen, la sube a Amazon ECR y actualiza el servicio de Amazon ECS Express Mode.
+#
+# Requisitos (se hacen una sola vez, ver la guía de migración):
+#   - Repositorio ECR con el nombre de ECR_REPOSITORY.
+#   - Servicio ECS Express Mode ya creado (la primera vez se crea desde la consola de AWS, con sus variables de
+#     entorno y secretos).
+#   - Rol IAM para GitHub OIDC con permiso de subir a ECR y de ejecutar ecs:UpdateExpressGatewayService.
+#   - Secretos del repositorio: AWS_DEPLOY_ROLE_ARN y ECS_SERVICE_ARN.
+#
+# No hay claves de AWS guardadas en GitHub: el rol se asume con OIDC.
+
+name: Build and deploy to AWS (ECS Express Mode)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: taskit-auth-profiles
+
+permissions:
+  id-token: write   # necesario para pedir el token OIDC a GitHub
+  contents: read
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" .
+          docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "uri=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy new image to ECS Express service
+        run: |
+          aws ecs update-express-gateway-service \
+            --service-arn "${{ secrets.ECS_SERVICE_ARN }}" \
+            --primary-container "image=${{ steps.image.outputs.uri }}"
