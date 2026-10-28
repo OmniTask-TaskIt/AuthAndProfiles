@@ -27,9 +27,20 @@ services:
     ports:
       - "6379:6379"
 
-  azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
-    container_name: taskit-azurite
-    command: azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+  s3mock:
+    image: adobe/s3mock:latest
+    container_name: taskit-s3mock
+    user: "0:0"
+    environment:
+      - debug=true
+      - COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS=taskit-profile-photos,taskit-identity-documents
+      - COM_ADOBE_TESTING_S3MOCK_STORE_REGION=us-east-2
+      - COM_ADOBE_TESTING_S3MOCK_STORE_ROOT=/store
+      - COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT=true
     ports:
-      - "10000:10000"
+      - "9090:9090"
+    volumes:
+      - s3mock-data:/store
+
+volumes:
+  s3mock-data:

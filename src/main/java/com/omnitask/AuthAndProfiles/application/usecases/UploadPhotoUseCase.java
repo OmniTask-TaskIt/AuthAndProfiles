@@ -1,6 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.domain.enums.VerificationStatus;
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
@@ -17,13 +17,13 @@ import java.time.LocalDateTime;
 public class UploadPhotoUseCase {
 
     private final ProfileRepository profileRepository;
-    private final AzureBlobService azureBlobService;
+    private final S3StorageService storageService;
 
     public String execute(String userId, MultipartFile file) {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("El archivo de imagen está vacío.");
         }
-        String photoUrl = azureBlobService.uploadFile(file);
+        String photoUrl = storageService.uploadFile(file);
 
         Profile profile = profileRepository.findByUserId(userId)
                 .orElseGet(() -> Profile.builder().userId(userId).identityVerificationStatus(VerificationStatus.UNVERIFIED)

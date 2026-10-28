@@ -1,6 +1,6 @@
 package com.omnitask.AuthAndProfiles.application.usecases;
 
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.application.services.SignedUrl;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.domain.events.SecurityAuditEvent;
@@ -25,7 +25,7 @@ import java.time.Instant;
 public class GetIdentityDocumentAccessUseCase {
 
     private final ProfileRepository profileRepository;
-    private final AzureBlobService azureBlobService;
+    private final S3StorageService storageService;
     private final EventPublisher eventPublisher;
 
     public DocumentAccessResponseDTO execute(String userId, String actorEmail) {
@@ -37,7 +37,7 @@ public class GetIdentityDocumentAccessUseCase {
             throw new NotFoundException("Este usuario no tiene un documento de identidad cargado.");
         }
 
-        SignedUrl signedUrl = azureBlobService.generateIdentityDocumentReadUrl(blobName);
+        SignedUrl signedUrl = storageService.generateIdentityDocumentReadUrl(blobName);
 
         log.warn("[AUDIT-SECURITY] {} accedió al documento de identidad del usuario {}", actorEmail, userId);
         eventPublisher.publish(EventType.SECURITY_AUDIT, userId,

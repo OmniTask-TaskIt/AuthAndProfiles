@@ -1,6 +1,6 @@
 package com.omnitask.AuthAndProfiles.usecase;
 
-import com.omnitask.AuthAndProfiles.application.services.AzureBlobService;
+import com.omnitask.AuthAndProfiles.application.services.S3StorageService;
 import com.omnitask.AuthAndProfiles.application.services.SignedUrl;
 import com.omnitask.AuthAndProfiles.application.usecases.GetIdentityDocumentAccessUseCase;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
@@ -34,7 +34,7 @@ class GetIdentityDocumentAccessUseCaseTest {
     @Mock
     private ProfileRepository profileRepository;
     @Mock
-    private AzureBlobService azureBlobService;
+    private S3StorageService storageService;
     @Mock
     private EventPublisher eventPublisher;
 
@@ -49,7 +49,7 @@ class GetIdentityDocumentAccessUseCaseTest {
                 .build();
         Instant expiresAt = Instant.now().plusSeconds(600);
         when(profileRepository.findByUserId("user-1")).thenReturn(Optional.of(profile));
-        when(azureBlobService.generateIdentityDocumentReadUrl("user-1/abc.pdf"))
+        when(storageService.generateIdentityDocumentReadUrl("user-1/abc.pdf"))
                 .thenReturn(new SignedUrl("https://blob/doc?sig=x", expiresAt));
 
         DocumentAccessResponseDTO result = getIdentityDocumentAccessUseCase.execute("user-1", "admin@omnitask.com");
@@ -76,7 +76,7 @@ class GetIdentityDocumentAccessUseCaseTest {
                 .hasMessageContaining("no tiene un documento");
         assertThatThrownBy(() -> getIdentityDocumentAccessUseCase.execute("user-2", "admin@omnitask.com"))
                 .isInstanceOf(NotFoundException.class);
-        verifyNoInteractions(azureBlobService, eventPublisher);
+        verifyNoInteractions(storageService, eventPublisher);
     }
 
     @Test
