@@ -1,16 +1,16 @@
-# Eventos (Kafka / Azure Event Hubs) y verificación de documentos
+# Eventos (Kafka) y verificación de documentos
 
 Este documento es el **contrato de integración** de Authentication & Profile (`auth-profile-service`) con los demás
 microservicios, en especial **Security and Audit HITL** (RPAD) y **Task Service**.
 
 ## 1. Cómo viajan los mensajes
 
-- Broker: **Azure Event Hubs** usando su endpoint compatible con Kafka (requiere nivel **Standard** o superior).
-- Como Standard permite **10 Event Hubs por namespace**, se usan pocos topics "gruesos" y el tipo va dentro del mensaje.
+- Broker: **Apache Kafka 3.8** (modo KRaft) en una EC2 de AWS, con SASL/PLAIN dentro de la VPC.
+- Se usan pocos topics "gruesos" y el tipo del evento va dentro del mensaje.
 - Entrega **al menos una vez**: un mismo evento puede llegar repetido. Todo consumidor debe deduplicar por `eventId`.
 - La clave de partición es siempre el `userId` (o el correo en auditoría) para conservar el orden por usuario.
 - Este MS no envía directo a Kafka: guarda el evento en Mongo (colección `outbox_events`) y un proceso lo envía cada
-  2 s y lo borra. Si Event Hubs cae, los eventos se acumulan y salen al recuperarse; no se pierden.
+  2 s y lo borra. Si Kafka cae, los eventos se acumulan y salen al recuperarse; no se pierden.
 
 ### Sobre común (todos los mensajes)
 
@@ -35,6 +35,7 @@ Los consumidores deben **ignorar los campos y los `eventType` que no conozcan** 
 | `taskit.auth.audit` | Auth & Profile | Security and Audit | Trazas de seguridad (logins, accesos a documentos) |
 | `taskit.security.events` | Security and Audit HITL | **Auth & Profile** | Resultado de revisiones y sanciones |
 | `taskit.auth.dead-letter` | Auth & Profile | Operación | Mensajes que no se pudieron procesar |
+| `taskit.task.events` | Task Service | **Auth & Profile** | `TaskCompleted` (reputación) |
 
 ## 3. Eventos que publica Auth & Profile
 
@@ -161,26 +162,33 @@ Auth & Profile ◄── IdentityVerificationResolved
   listar y resolver reportes a mano (`RESOLVED` o `DISMISSED`) mientras Security and Audit HITL no los consuma
   directamente del topic y aplique sus propias decisiones vía `AccountSanctionApplied`.
 
-## 7. Configuración de Azure Event Hubs
+## 7. Configuración de Kafka en AWS
 
-1. Crear un **namespace** de Event Hubs, nivel **Standard** (el Basic no soporta Kafka).
-2. Crear estos **Event Hubs** (equivalen a topics; Event Hubs no los crea solo):
-   `taskit.auth.events`, `taskit.auth.audit`, `taskit.security.events`, `taskit.auth.dead-letter`.
-3. Crear una **política de acceso compartido** del namespace con permisos *Send* y *Listen* y copiar su cadena de conexión.
-4. En el Event Hub `taskit.security.events` debe existir el **consumer group** `auth-profile-service`
-   (si no se crea solo al arrancar, crearlo en el portal).
-5. Variables de entorno de este MS (App Service → Configuración):
+Kafka corre en la misma EC2 que Redis, en un contenedor Docker (`apache/kafka:3.8.0`, un solo nodo en modo KRaft).
+
+1. **Listener:** `BROKER://:9092` con `SASL_PLAINTEXT` y mecanismo `PLAIN`. El broker anuncia su **IP privada**
+   (`KAFKA_ADVERTISED_LISTENERS=BROKER://<IP privada de la EC2>:9092`), así que solo se llega desde dentro de la VPC.
+2. **Red:** el grupo de seguridad de la EC2 permite TCP 9092 solo desde el rango de la VPC. No hay acceso desde internet.
+3. **Usuario:** `taskit`, con la contraseña definida en `KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG` al crear el contenedor.
+4. **Topics** (3 particiones, factor de replicación 1): `taskit.auth.events`, `taskit.auth.audit`,
+   `taskit.security.events`, `taskit.task.events` y `taskit.auth.dead-letter`. Todos los servicios usan el mismo
+   usuario y los mismos topics (Payments y Security incluidos).
+5. Variables de entorno de este MS (servicio de ECS):
 
 ```
-KAFKA_BOOTSTRAP_SERVERS=<namespace>.servicebus.windows.net:9093
-KAFKA_SECURITY_PROTOCOL=SASL_SSL
+KAFKA_ENABLED=true
+KAFKA_BOOTSTRAP_SERVERS=<IP privada de la EC2>:9092
+KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT
 KAFKA_SASL_MECHANISM=PLAIN
-KAFKA_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="$ConnectionString" password="<cadena de conexión completa>";
+KAFKA_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="taskit" password="<contraseña de Kafka>";
 KAFKA_CONSUMER_GROUP=auth-profile-service
 ```
 
 Si Kafka no está disponible el servicio arranca igual: los eventos quedan en el outbox y se envían después.
 `KAFKA_ENABLED=false` apaga por completo el envío y el consumo (útil para pruebas sin broker).
+
+Nota: `SASL_PLAINTEXT` no cifra el tráfico. Es aceptable mientras el broker solo sea accesible dentro de la VPC;
+para exponerlo fuera hay que pasar a `SASL_SSL` con certificado.
 
 ## 8. Desarrollo local
 

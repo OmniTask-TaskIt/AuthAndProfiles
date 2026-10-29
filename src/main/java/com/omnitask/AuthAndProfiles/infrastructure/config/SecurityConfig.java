@@ -34,7 +34,7 @@ public class SecurityConfig {
      * Orígenes permitidos por CORS, separados por coma. Se pueden cambiar con la variable de entorno
      * CORS_ALLOWED_ORIGINS sin tocar el código; si no existe, se usan el front local y el desplegado en Vercel.
      */
-    @Value("${app.cors.allowed-origins:http://localhost:5173,https://taskit-frontend-omega.vercel.app}")
+    @Value("${app.cors.allowed-origins:http://localhost:5173,https://taskit-frontend-ten.vercel.app}")
     private List<String> allowedOrigins;
 
     @Bean

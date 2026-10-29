@@ -1,6 +1,6 @@
 # Infraestructura local para desarrollo: Kafka (modo KRaft, sin Zookeeper) y Redis.
 # Uso:  docker compose up -d      |      docker compose down
-# MongoDB, Azure Blob y Resend siguen siendo los servicios reales (Atlas / Azure / Resend).
+# MongoDB y Resend siguen siendo los servicios reales (Atlas / Resend). El almacenamiento se simula con S3Mock.
 services:
   kafka:
     image: apache/kafka:3.8.0
