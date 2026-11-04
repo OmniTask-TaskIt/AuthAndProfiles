@@ -10,7 +10,7 @@
 k6 run auth-profile-load-test.js
 
 # Contra otro ambiente
-k6 run -e BASE_URL=https://tu-ambiente.azurewebsites.net auth-profile-load-test.js
+k6 run -e BASE_URL=https://tu-ambiente.ejemplo.com auth-profile-load-test.js
 
 # Con Docker, sin instalar k6
 docker run --rm -i --network=host -e BASE_URL=http://localhost:8080 grafana/k6 run - < auth-profile-load-test.js
@@ -48,7 +48,7 @@ docker run --rm -v "${PWD}:/xk6" -w /xk6 --entrypoint /xk6/k6 `
   grafana/xk6 run auth-profile-load-test.js
 ```
 Variables de entorno: `BASE_URL`, `REDIS_HOST` (default `localhost`), `REDIS_PORT` (default `6379`),
-`REDIS_PASSWORD` (vacío por defecto) y `REDIS_TLS=true` para Azure Cache for Redis (puerto 6380).
+`REDIS_PASSWORD` (vacío por defecto) y `REDIS_TLS=true` solo si el Redis tiene TLS (el Redis local y el de AWS no lo usan).
 
 Para que no se envíen correos reales, el servicio debe arrancar con `EMAIL_ENABLED=false`; el OTP se genera
 y se guarda en Redis igual.
@@ -86,7 +86,7 @@ dedicado, y volver a exigir el umbral estricto.
 - El paso de perfil busca por email (camino indexado); la búsqueda por nombre es un regex sin anclar.
 
 ## No probado a propósito
-- `POST /profiles/{userId}/document` y los flujos con Azure Blob: subir archivos reales en una prueba de
+- `POST /profiles/{userId}/document` y los flujos con Amazon S3: subir archivos reales en una prueba de
   carga masiva puede generar costos de almacenamiento no controlados. Si se necesita medirlo, se recomienda
   un escenario aparte con un volumen fijo y pequeño de archivos, corrido manualmente.
 - Login con Google/GitHub: dependen de servicios OAuth externos reales; no tiene sentido cargarlos con

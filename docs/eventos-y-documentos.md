@@ -29,7 +29,7 @@ Los consumidores deben **ignorar los campos y los `eventType` que no conozcan** 
 
 ## 2. Topics
 
-| Topic (Event Hub) | Quién publica | Quién consume | Contenido |
+| Topic (Kafka) | Quién publica | Quién consume | Contenido |
 |---|---|---|---|
 | `taskit.auth.events` | Auth & Profile | HITL, Task Service, otros | Eventos de negocio de usuarios y perfiles |
 | `taskit.auth.audit` | Auth & Profile | Security and Audit | Trazas de seguridad (logins, accesos a documentos) |
@@ -121,24 +121,24 @@ Los errores transitorios se reintentan 3 veces (1 s entre intentos) antes de ir 
 ```
 Front ── POST /api/v1/profiles/{userId}/document (multipart: file, documentType) ──► Auth & Profile
    1. Valida: no vacío, ≤ 5 MB, PDF/JPG/PNG por firma real del archivo (no por extensión ni Content-Type)
-   2. Guarda en Azure Blob, contenedor PRIVADO "identity-documents", nombre {userId}/{uuid}.{ext}
+   2. Guarda en Amazon S3, bucket PRIVADO "taskit-identity-documents", nombre {userId}/{uuid}.{ext}
    3. Perfil → PENDING_REVIEW y publica IdentityDocumentSubmitted (taskit.auth.events)
 
 HITL ◄── IdentityDocumentSubmitted
    4. El revisor (usuario con rol ADMIN) pide el archivo:
       GET /api/v1/admin/verification-documents/{userId}/access   (Authorization: Bearer <JWT de un ADMIN>)
-      → { "url": "https://…/identity-documents/…?sv=…&sig=…", "expiresAt": "…", "documentType": "…", … }
+      → { "url": "https://…/taskit-identity-documents/…?X-Amz-Signature=…", "expiresAt": "…", "documentType": "…", … }
       El enlace es de SOLO LECTURA y vence en 10 minutos (SAS_TTL_MINUTES). Cada acceso queda auditado
       (log + evento SecurityAudit IDENTITY_DOCUMENT_ACCESSED).
    5. El revisor decide y HITL publica IdentityVerificationResolved (taskit.security.events)
 
 Auth & Profile ◄── IdentityVerificationResolved
    6. Perfil → VERIFIED o REJECTED y publica IdentityVerificationUpdated
-   7. Si fue REJECTED, el usuario puede subir otro documento (el anterior se borra del blob)
+   7. Si fue REJECTED, el usuario puede subir otro documento (el anterior se borra del bucket)
 ```
 
-- El contenedor de documentos **no tiene acceso público**; ningún servicio recibe credenciales de Azure Storage.
-  Azure Storage cifra en reposo por defecto y todo el tráfico va por HTTPS.
+- El bucket de documentos **no tiene acceso público**; ningún servicio recibe credenciales de S3: el servicio usa el rol IAM de su tarea en ECS.
+  S3 cifra en reposo por defecto y todo el tráfico va por HTTPS.
 - Mientras HITL no exista, un ADMIN puede resolver a mano con
   `POST /api/v1/admin/verification-documents/{userId}/resolution` y cuerpo `{ "decision": "APPROVED|REJECTED", "reason": "…" }`
   (usa la misma lógica que el evento).

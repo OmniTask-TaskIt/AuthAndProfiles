@@ -11,9 +11,10 @@
 ![Java](https://img.shields.io/badge/Java-17-orange?style=for-the-badge&logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.3-brightgreen?style=for-the-badge&logo=springboot&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
-![Kafka](https://img.shields.io/badge/Kafka-Azure%20Event%20Hubs-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-Azure%20Cache-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![Kafka](https://img.shields.io/badge/Kafka-Apache%203.8-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-ECS%20Fargate-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-success?style=for-the-badge)
 ![Status](https://img.shields.io/badge/status-en%20desarrollo-yellow?style=for-the-badge)
 
@@ -55,7 +56,7 @@
 
 ## 🏗️ Arquitectura
 
-El servicio sigue **arquitectura hexagonal** (puertos y adaptadores), organizada en capas al estilo **Clean Architecture**. El dominio no sabe que Spring, Mongo, Redis, Azure o Kafka existen: esas tecnologías entran al sistema únicamente a través de adaptadores que implementan contratos definidos por el propio dominio.
+El servicio sigue **arquitectura hexagonal** (puertos y adaptadores), organizada en capas al estilo **Clean Architecture**. El dominio no sabe que Spring, Mongo, Redis, AWS o Kafka existen: esas tecnologías entran al sistema únicamente a través de adaptadores que implementan contratos definidos por el propio dominio.
 
 ```
 Adaptadores de entrada: controladores web y consumidores de Kafka
@@ -67,7 +68,7 @@ Adaptadores de entrada: controladores web y consumidores de Kafka
         Domain: modelos, reglas de negocio y puertos, sin dependencias externas
                  ▲
                  │
-Adaptadores de salida: Mongo, Redis, Azure Blob, Kafka, Resend, Google, GitHub
+Adaptadores de salida: Mongo, Redis, Amazon S3, Kafka, Resend, Google, GitHub
 ```
 
 Tres decisiones sostienen esta arquitectura:
@@ -75,7 +76,7 @@ Tres decisiones sostienen esta arquitectura:
 | Decisión | Por qué importa |
 |---|---|
 | **Un caso de uso por operación de negocio** | `RegisterUserUseCase`, `LoginUseCase`, `SubmitIdentityDocumentUseCase`, `CreateReviewUseCase` y `ChangeAccountStatusUseCase` hacen exactamente una cosa cada uno, lo que los vuelve triviales de probar en aislamiento con mocks, sin tocar HTTP ni Mongo directamente |
-| **Patrón outbox para publicar eventos** | Un caso de uso guarda el evento en la misma base de datos donde guarda su cambio de negocio, dentro de la misma transacción lógica. Un proceso aparte, `OutboxRelay`, lo entrega a Kafka con reintentos. Si Azure Event Hubs se cae un rato, ningún evento se pierde y ningún usuario queda bloqueado esperando |
+| **Patrón outbox para publicar eventos** | Un caso de uso guarda el evento en la misma base de datos donde guarda su cambio de negocio, dentro de la misma transacción lógica. Un proceso aparte, `OutboxRelay`, lo entrega a Kafka con reintentos. Si Kafka se cae un rato, ningún evento se pierde y ningún usuario queda bloqueado esperando |
 | **Autorización declarativa con `@PreAuthorize`** | Las reglas de quién puede tocar qué recurso viven junto al endpoint, apoyadas en `ProfileSecurity` para verificar propiedad: solo el dueño de un perfil puede editarlo |
 
 <br/>
@@ -94,13 +95,17 @@ Esta es la vista de más alto nivel, la de todo el ecosistema TaskIt y no solo d
 
 ![Diagrama de despliegue general](docs/diagrams/02-despliegue-general.png)
 
-Zoom hacia los contenedores desplegados sobre Azure: el frontend en Vercel, un API Gateway y los tres microservicios de backend —Identity & Profile Service, Payments y Security and Audit HITL—. Cada uno con su propia base de datos y su propia caché, comunicándose entre sí exclusivamente a través de Azure Event Hubs. Este es el mapa de referencia para entender dónde encaja este repositorio dentro del sistema completo.
+Zoom hacia los contenedores desplegados: el frontend en Vercel, un API Gateway y los tres microservicios de backend —Identity & Profile Service, Payments y Security and Audit HITL—. Cada uno con su propia base de datos y su propia caché, comunicándose entre sí exclusivamente a través de Kafka. Este es el mapa de referencia para entender dónde encaja este repositorio dentro del sistema completo.
+
+> **Nota:** el diagrama se dibujó cuando el despliegue era sobre Azure. Hoy el servicio corre en AWS (ver [Configuración y despliegue](#-configuración-y-despliegue)). La estructura de contenedores es la misma; solo cambiaron los proveedores: Azure Event Hubs por Kafka propio, Azure Cache for Redis por Redis en una EC2 y Azure Blob Storage por Amazon S3.
 
 ### 3. Despliegue específico de Identity & Profile Service
 
 ![Diagrama de despliegue específico](docs/diagrams/03-despliegue-especifico.png)
 
-Ahora el zoom es sobre este microservicio en particular: el contenedor Spring Boot dentro de Docker, su conexión a MongoDB Atlas como fuente de verdad, Azure Cache for Redis para OTP y tokens de sesión, Azure Blob Storage para fotos y documentos, su publicación y consumo en Azure Event Hubs, y las llamadas salientes a Resend y a los proveedores de OAuth. GitHub se sumó como proveedor de login después de dibujar este diagrama, así que hoy la lista de proveedores de OAuth es más larga que la que verás aquí.
+Ahora el zoom es sobre este microservicio en particular: el contenedor Spring Boot dentro de Docker, su conexión a MongoDB Atlas como fuente de verdad, Redis para OTP y tokens de sesión, almacenamiento de objetos para fotos y documentos, su publicación y consumo de eventos en Kafka, y las llamadas salientes a Resend y a los proveedores de OAuth. GitHub se sumó como proveedor de login después de dibujar este diagrama, así que hoy la lista de proveedores de OAuth es más larga que la que verás aquí.
+
+> **Nota:** este diagrama muestra el despliegue original en Azure. Hoy el servicio corre en AWS: ECS Fargate para el contenedor, una EC2 con Redis y Kafka en Docker, y Amazon S3 para los archivos. Ver [Configuración y despliegue](#-configuración-y-despliegue).
 
 ### 4. Componentes internos
 
@@ -131,7 +136,7 @@ src/main/java/com/omnitask/AuthAndProfiles
 │
 ├── application                     Casos de uso que orquestan domain y los puertos
 │   ├── usecases                    RegisterUserUseCase, LoginUseCase, CreateReviewUseCase y demás
-│   └── services                    JwtService, ReputationService, AzureBlobService, GithubAuthService
+│   └── services                    JwtService, ReputationService, S3StorageService, GithubAuthService
 │
 └── infrastructure                  El único lugar que conoce el framework
     ├── adapters
@@ -145,7 +150,7 @@ src/main/java/com/omnitask/AuthAndProfiles
     └── config                       Seguridad, Kafka, creación del administrador inicial
 ```
 
-> **Regla de dependencia:** `domain` no importa nada de `infrastructure`. `application` solo conoce `domain` y los puertos. `infrastructure` es la única capa que importa Spring, el driver de Mongo, el SDK de Azure o el cliente de Kafka.
+> **Regla de dependencia:** `domain` no importa nada de `infrastructure`. `application` solo conoce `domain` y los puertos. `infrastructure` es la única capa que importa Spring, el driver de Mongo, el SDK de AWS o el cliente de Kafka.
 
 <br/>
 
@@ -171,8 +176,8 @@ Prefijo común para todo: `/api/v1`. Autenticación por **JWT Bearer** salvo don
 |---|---|---|---|
 | `GET` | `/profiles/{userId}` | autenticado | Perfil público, sin exponer datos sensibles |
 | `GET` | `/profiles/search?name=` | autenticado | Búsqueda de perfiles por nombre |
-| `POST` | `/profiles/{userId}/photo` | dueño del perfil | Sube la foto de perfil al contenedor público de Azure Blob |
-| `POST` | `/profiles/{userId}/document` | dueño del perfil | Envía el documento de identidad a verificación, en el contenedor privado |
+| `POST` | `/profiles/{userId}/photo` | dueño del perfil | Sube la foto de perfil al bucket público de fotos en Amazon S3 |
+| `POST` | `/profiles/{userId}/document` | dueño del perfil | Envía el documento de identidad a verificación, en el bucket privado |
 | `PATCH` | `/profiles/{userId}` | dueño del perfil | Actualiza descripción, categorías, ubicación y foto |
 | `POST` | `/profiles/switch-role` | el propio usuario | Cambia entre Seeker y Provider |
 | `DELETE` | `/profiles/{email}` | dueño o Admin | Elimina la cuenta y su perfil, incluido el documento almacenado |
@@ -219,7 +224,7 @@ Todo error, sin importar el endpoint, responde con este mismo formato desde `Glo
 | `404` | `NotFoundException` | El usuario, perfil o reporte no existe |
 | `409` | `ConflictException` | Reseña o reporte duplicados |
 | `429` | `TooManyAttemptsException` | Se superó el límite de intentos de login o de OTP |
-| `502` | `ExternalServiceException` | Falló Resend, Azure Blob, Google o GitHub |
+| `502` | `ExternalServiceException` | Falló Resend, Amazon S3, Google o GitHub |
 | `500` | Sin excepción de dominio | Cualquier error no controlado, sin exponer detalle interno |
 
 ### Ejemplos principales
@@ -258,7 +263,7 @@ Responde `200` con `accessToken`, `refreshToken`, un mensaje y el email.
   "userId": "66f1...",
   "fullName": "Robinson Núñez",
   "description": "Desarrollador full stack",
-  "photoUrl": "https://...blob.core.windows.net/profiles-photos/....png",
+  "photoUrl": "https://taskit-profile-photos.s3.us-east-2.amazonaws.com/....png",
   "categories": ["desarrollo-web", "diseño"],
   "locationCoverage": "Bogotá",
   "reputationScore": 4.67,
@@ -267,7 +272,7 @@ Responde `200` con `accessToken`, `refreshToken`, un mensaje y el email.
 }
 ```
 
-Nunca incluye el nombre del blob del documento de identidad. Ese dato es sensible y solo lo puede pedir un administrador a través del endpoint de acceso temporal.
+Nunca incluye la clave del objeto del documento de identidad en S3. Ese dato es sensible y solo lo puede pedir un administrador a través del endpoint de acceso temporal.
 </details>
 
 <details>
@@ -294,7 +299,7 @@ Responde `200` con el usuario actualizado, sin su hash de contraseña.
 
 ## 🔗 Integración con microservicios
 
-Este servicio habla con el resto de TaskIt de forma **asíncrona**, a través de Azure Event Hubs sobre el protocolo Kafka, con el patrón outbox del lado de publicación para no perder eventos si el broker está caído.
+Este servicio habla con el resto de TaskIt de forma **asíncrona**, a través de Apache Kafka, con el patrón outbox del lado de publicación para no perder eventos si el broker está caído.
 
 ### 📢 Lo que publica — `taskit.auth.events` y `taskit.auth.audit`
 
@@ -309,14 +314,15 @@ Este servicio habla con el resto de TaskIt de forma **asíncrona**, a través de
 | `UserReported` | Un usuario reporta a otro | Security & Audit HITL, para su cola de moderación |
 | `SecurityAudit` | Login exitoso, fallido o bloqueado, o acceso a un documento | Security & Audit |
 
-### 📥 Lo que consume — `taskit.security.events`
+### 📥 Lo que consume — `taskit.security.events` y `taskit.task.events`
 
 | Evento | Origen | Efecto en este servicio |
 |---|---|---|
 | `IdentityVerificationResolved` | Security & Audit HITL | Marca el perfil como verificado o rechazado |
 | `AccountSanctionApplied` | Security & Audit HITL | Suspende, bloquea o reactiva la cuenta sancionada |
+| `TaskCompleted` | Task Service | Suma una tarea completada al perfil del prestador; los eventos repetidos se descartan por `eventId` |
 
-El contrato completo, con cada payload en JSON, el sobre común de todos los eventos, la configuración de Event Hubs y el flujo entero de verificación de documentos con enlaces temporales firmados, vive en [`docs/eventos-y-documentos.md`](docs/eventos-y-documentos.md). Cualquier equipo que quiera integrarse con este microservicio debería empezar por ahí.
+El contrato completo, con cada payload en JSON, el sobre común de todos los eventos, la configuración de Kafka y el flujo entero de verificación de documentos con enlaces temporales firmados, vive en [`docs/eventos-y-documentos.md`](docs/eventos-y-documentos.md). Cualquier equipo que quiera integrarse con este microservicio debería empezar por ahí.
 
 ### 🤝 Integraciones síncronas con terceros
 
@@ -325,7 +331,7 @@ El contrato completo, con cada payload en JSON, el sobre común de todos los eve
 | Resend | Envío del correo con el código OTP |
 | Google OAuth | Verificación del ID token para login social |
 | GitHub OAuth | Intercambio del código de autorización por un access token y lectura del perfil |
-| Azure Blob Storage | Fotos de perfil en un contenedor público y documentos de identidad en uno privado |
+| Amazon S3 | Fotos de perfil en un bucket de lectura pública y documentos de identidad en uno privado |
 
 <br/>
 
@@ -336,10 +342,10 @@ El contrato completo, con cada payload en JSON, el sobre común de todos los eve
 | Lenguaje y runtime | Java 17 |
 | Framework | Spring Boot 3.3.3, con Web, Security, Validation, Data MongoDB y Data Redis |
 | Base de datos | MongoDB Atlas |
-| Caché y control de intentos | Redis, en Azure Cache for Redis |
+| Caché y control de intentos | Redis 7, en Docker sobre una EC2 |
 | Autenticación | JWT con JJWT 0.12.5 y contraseñas con BCrypt |
-| Mensajería | Apache Kafka sobre Azure Event Hubs, vía Spring Kafka |
-| Almacenamiento de archivos | Azure Blob Storage, SDK 12.28.1 |
+| Mensajería | Apache Kafka 3.8 (KRaft, SASL/PLAIN) en Docker sobre una EC2, vía Spring Kafka |
+| Almacenamiento de archivos | Amazon S3, AWS SDK v2 con URLs prefirmadas |
 | Login social | Google API Client y GitHub OAuth por REST |
 | Correo | Resend |
 | Documentación de API | springdoc-openapi, OpenAPI 3 y Swagger UI |
@@ -348,7 +354,8 @@ El contrato completo, con cada payload en JSON, el sobre común de todos los eve
 | Contenedores | Docker, imagen multi etapa que corre como usuario sin privilegios |
 | Infraestructura local | docker compose, con Kafka en modo KRaft y Redis |
 | Pruebas de carga | k6 |
-| Integración continua | GitHub Actions, con despliegue a Azure Web App |
+| Integración continua | GitHub Actions, con despliegue a AWS (ECR y ECS Express Mode) mediante OIDC |
+| Nube | AWS: ECS Fargate, ECR, S3, EC2, CloudWatch y IAM |
 
 <br/>
 
@@ -501,19 +508,52 @@ Por eso los umbrales del script son de desarrollo y por endpoint, con margen sob
 
 **Estos valores validan la corrección funcional bajo carga, no un SLA de producción.** Para validar el objetivo de 800 ms hay que repetir la prueba con la app y la base de datos en la misma región y con un tier dedicado de Atlas, y volver a exigir el umbral estricto.
 
-No se probaron a propósito la subida de documentos (Azure Blob, por costos de almacenamiento) ni el login con Google/GitHub (dependen de OAuth externo). Más detalle en [`load-tests/README.md`](load-tests/README.md).
+No se probaron a propósito la subida de documentos (Amazon S3, por costos de almacenamiento) ni el login con Google/GitHub (dependen de OAuth externo). Más detalle en [`load-tests/README.md`](load-tests/README.md).
 
 <br/>
 
 ## ⚙️ Configuración y despliegue
 
-1. Copia `.env.example` a `.env` y completa cada valor: Mongo, JWT, Redis, Resend, Azure Blob, Google, GitHub y Kafka. El archivo `.env` nunca se sube al repositorio.
-2. Para desarrollo local, `docker compose up -d` levanta Kafka y Redis. Con `REDIS_SSL=false` el servicio corre completo sin depender de ningún recurso de Azure.
+### Desarrollo local
+
+1. Copia `.env.example` a `.env` y completa cada valor: Mongo, JWT, Redis, Resend, S3, Google, GitHub y Kafka. El archivo `.env` nunca se sube al repositorio.
+2. Para desarrollo local, `docker compose up -d` levanta Kafka, Redis y un S3 simulado (S3Mock). Con `REDIS_SSL=false` el servicio corre completo sin depender de ningún recurso de la nube.
 3. Luego, `mvn spring-boot:run` levanta el servicio.
 
 Una vez arriba, la documentación interactiva de la API queda disponible en `http://localhost:8080/swagger-ui.html`.
 
-> Los detalles de cada variable sensible, cómo generar el `JWT_SECRET`, cómo se crea el administrador inicial y cómo configurar Azure Event Hubs están en `.env.example` y en `docs/eventos-y-documentos.md`.
+> Los detalles de cada variable sensible, cómo generar el `JWT_SECRET`, cómo se crea el administrador inicial y cómo configurar Kafka están en `.env.example` y en `docs/eventos-y-documentos.md`.
+
+### Producción en AWS
+
+El servicio corre en la región `us-east-2` (Ohio). Cada pieza y su razón de ser:
+
+| Pieza | Servicio | Detalle |
+|---|---|---|
+| Aplicación | Amazon ECS Express Mode (Fargate) | 0,5 vCPU y 1 GB, puerto 8080, comprobación de salud en `/v3/api-docs`. El balanceador de carga y el certificado HTTPS los crea el propio servicio |
+| Imágenes | Amazon ECR | El flujo de GitHub Actions construye la imagen Docker y la sube con la etiqueta del commit |
+| Fotos y documentos | Amazon S3 | Dos buckets: `taskit-profile-photos` (lectura pública solo de objetos) y `taskit-identity-documents` (privado, solo enlaces prefirmados de 10 minutos). El servicio usa el rol IAM de su tarea, sin llaves |
+| Redis y Kafka | EC2 `t3.small` con Docker | Redis 7 con contraseña y Kafka 3.8 en modo KRaft con SASL/PLAIN. Solo se llega desde dentro de la VPC: el grupo de seguridad abre 6379 solo al servicio y 9092 solo al rango de la VPC |
+| Base de datos | MongoDB Atlas | Fuente de verdad, incluida la bandeja `outbox_events` |
+| Correo | Resend | Códigos OTP y de recuperación |
+| Registros | Amazon CloudWatch Logs | Los logs del contenedor, para depurar arranques y errores |
+| Frontend | Vercel | Recibe la URL del backend en `VITE_API_URL` |
+
+**Despliegue continuo.** Cada push a `main` ejecuta [`aws-ecs-deploy.yml`](.github/workflows/aws-ecs-deploy.yml): asume un rol de AWS con OIDC (no hay claves de AWS guardadas en GitHub), construye y sube la imagen a ECR y pide a ECS la nueva versión con `update-express-gateway-service`. ECS tarda unos 12 a 14 minutos en completar el relevo; si la versión nueva falla su comprobación de salud, la anterior sigue atendiendo. Los secretos del repositorio son `AWS_DEPLOY_ROLE_ARN` y `ECS_SERVICE_ARN`.
+
+**Variables de entorno del servicio.** En ECS se cargan en la definición del servicio, cada una en sus campos de nombre y valor. Las mismas de `.env.example`, con estos valores en producción:
+
+| Variable | En producción |
+|---|---|
+| `SPRING_DATA_MONGODB_URI` | Cadena de conexión de Atlas (hay que permitir en Atlas la IP desde la que sale el servicio) |
+| `JWT_SECRET`, `JWT_EXPIRATION`, `JWT_REFRESH_EXPIRATION` | Secreto propio de producción; acceso de 15 minutos y refresco de 7 días |
+| `REDIS_HOST`, `REDIS_PASSWORD`, `REDIS_SSL` | IP privada de la EC2, contraseña de Redis y `false` |
+| `KAFKA_*` | Ver la sección 7 de [`docs/eventos-y-documentos.md`](docs/eventos-y-documentos.md); cada microservicio usa su propio `KAFKA_CONSUMER_GROUP` |
+| `S3_PHOTOS_BUCKET`, `S3_DOCUMENTS_BUCKET`, `AWS_REGION` | Nombres de los buckets y `us-east-2`; sin `S3_ENDPOINT` ni llaves |
+| `CORS_ALLOWED_ORIGINS` | Dominio del frontend, sin barra final y separado por comas |
+| `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI` | Los mismos que usa el frontend; la URL de callback registrada debe ser idéntica |
+
+> **Cuidado con la IP privada:** `172.31.0.254` (Redis y Kafka) solo se alcanza desde dentro de la VPC. Un servicio que corra en un portátil o en otra red no puede usar ese Kafka y debe usar el de `docker compose`.
 
 <br/>
 

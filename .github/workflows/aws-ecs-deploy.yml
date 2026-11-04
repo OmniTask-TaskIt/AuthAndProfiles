@@ -4,7 +4,8 @@
 #   - Repositorio ECR con el nombre de ECR_REPOSITORY.
 #   - Servicio ECS Express Mode ya creado (la primera vez se crea desde la consola de AWS, con sus variables de
 #     entorno y secretos).
-#   - Rol IAM para GitHub OIDC con permiso de subir a ECR y de ejecutar ecs:UpdateExpressGatewayService.
+#   - Rol IAM para GitHub OIDC con permiso de subir a ECR y de ejecutar ecs:UpdateExpressGatewayService,
+#     ecs:RegisterTaskDefinition y iam:PassRole (solo hacia ecs-tasks.amazonaws.com).
 #   - Secretos del repositorio: AWS_DEPLOY_ROLE_ARN y ECS_SERVICE_ARN.
 #
 # No hay claves de AWS guardadas en GitHub: el rol se asume con OIDC.
