@@ -1,4 +1,4 @@
-package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.kafka;
+package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.rabbitmq;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

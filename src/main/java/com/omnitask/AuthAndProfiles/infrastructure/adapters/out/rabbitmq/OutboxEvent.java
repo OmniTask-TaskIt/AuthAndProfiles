@@ -1,4 +1,4 @@
-package com.omnitask.AuthAndProfiles.infrastructure.adapters.out.kafka;
+package com.omnitask.AuthAndProfiles.infrastructure.adapters.out.rabbitmq;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,8 +10,9 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.Instant;
 
 /**
- * Evento pendiente de enviar a Kafka (patrón outbox). Se guarda en Mongo al ocurrir el hecho de negocio y
- * OutboxRelay lo envía y lo borra. Así una caída de Kafka/Event Hubs no pierde eventos ni frena al usuario.
+ * Evento pendiente de enviar a RabbitMQ (patrón outbox). Se guarda en Mongo al ocurrir el hecho de negocio y
+ * OutboxRelay lo envía y lo borra. Así una caída del broker no pierde eventos ni frena al usuario.
+ * El campo {@code topic} se llama así por compatibilidad con los documentos ya guardados; contiene la routing key.
  */
 @Data
 @Builder

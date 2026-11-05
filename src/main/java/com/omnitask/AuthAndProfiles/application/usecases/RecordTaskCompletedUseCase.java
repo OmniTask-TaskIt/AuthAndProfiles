@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * RF-AUTHPR-8: suma una tarea completada al historial del prestador cuando Task Service lo informa. La suma es
- * atómica en la base de datos y el consumidor de Kafka descarta los eventos repetidos por eventId, así que un
+ * atómica en la base de datos y el consumidor de RabbitMQ descarta los eventos repetidos por eventId, así que un
  * evento duplicado no cuenta dos veces.
  */
 @Slf4j

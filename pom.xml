@@ -92,10 +92,10 @@
             <version>2.2.0</version>
         </dependency>
         
-        <!-- Kafka (Azure Event Hubs habla el protocolo Kafka) -->
+        <!-- RabbitMQ (Spring AMQP; en la nube, CloudAMQP) -->
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
 
         <!-- Amazon S3 (AWS SDK v2; la versión la fija el BOM de dependencyManagement) -->

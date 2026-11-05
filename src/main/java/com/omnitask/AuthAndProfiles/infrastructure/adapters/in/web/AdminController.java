@@ -107,7 +107,7 @@ public class AdminController {
         return ResponseEntity.ok(ProfileResponseDTO.fromProfile(profile));
     }
 
-    /** Reportes de usuarios, mientras Security and Audit HITL no los consuma directamente de Kafka. */
+    /** Reportes de usuarios, mientras Security and Audit HITL no los consuma directamente de RabbitMQ. */
     @GetMapping("/reports")
     public ResponseEntity<PageResponseDTO<AdminReportDTO>> listReports(
             @RequestParam(required = false) ReportStatus status,

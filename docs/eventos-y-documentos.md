@@ -1,16 +1,25 @@
-# Eventos (Kafka) y verificación de documentos
+# Eventos (RabbitMQ) y verificación de documentos
 
 Este documento es el **contrato de integración** de Authentication & Profile (`auth-profile-service`) con los demás
 microservicios, en especial **Security and Audit HITL** (RPAD) y **Task Service**.
 
 ## 1. Cómo viajan los mensajes
 
-- Broker: **Apache Kafka 3.8** (modo KRaft) en una EC2 de AWS, con SASL/PLAIN dentro de la VPC.
-- Se usan pocos topics "gruesos" y el tipo del evento va dentro del mensaje.
+- Broker: **RabbitMQ** administrado en **CloudAMQP** (AMQP 0-9-1 sobre TLS, `amqps`, puerto 5671). Todos los
+  microservicios usan la misma instancia y el mismo *virtual host*.
+- Hay **un exchange de tipo `topic`**, durable, llamado `taskit.events`. La **routing key** de cada mensaje es el
+  nombre del canal (las de la sección 2, las mismas que antes eran los topics de Kafka). El tipo del evento va
+  dentro del mensaje (`eventType`).
+- Cada microservicio que consume declara **su propia cola durable** y la liga al exchange con la routing key que le
+  interesa. **RabbitMQ no guarda mensajes que no llegan a ninguna cola** (a diferencia de Kafka): la cola del
+  consumidor debe existir y estar ligada *antes* de que se publique el evento, o ese evento se pierde para él.
 - Entrega **al menos una vez**: un mismo evento puede llegar repetido. Todo consumidor debe deduplicar por `eventId`.
-- La clave de partición es siempre el `userId` (o el correo en auditoría) para conservar el orden por usuario.
-- Este MS no envía directo a Kafka: guarda el evento en Mongo (colección `outbox_events`) y un proceso lo envía cada
-  2 s y lo borra. Si Kafka cae, los eventos se acumulan y salen al recuperarse; no se pierden.
+- RabbitMQ no tiene claves de partición. El `userId` (o el correo en auditoría) viaja en la cabecera `key` del mensaje
+  y el orden se conserva por cola (un consumidor por cola, sin concurrencia).
+- Este MS no envía directo al broker: guarda el evento en Mongo (colección `outbox_events`) y un proceso lo envía cada
+  2 s con confirmación del broker (*publisher confirm*) y solo entonces lo borra. Si RabbitMQ cae, los eventos se
+  acumulan y salen al recuperarse; no se pierden. Los mensajes se publican como JSON (`application/json`) y
+  persistentes.
 
 ### Sobre común (todos los mensajes)
 
@@ -29,17 +38,17 @@ Los consumidores deben **ignorar los campos y los `eventType` que no conozcan** 
 
 ## 2. Topics
 
-| Topic (Kafka) | Quién publica | Quién consume | Contenido |
+| Routing key | Quién publica | Quién consume | Contenido |
 |---|---|---|---|
 | `taskit.auth.events` | Auth & Profile | HITL, Task Service, otros | Eventos de negocio de usuarios y perfiles |
 | `taskit.auth.audit` | Auth & Profile | Security and Audit | Trazas de seguridad (logins, accesos a documentos) |
 | `taskit.security.events` | Security and Audit HITL | **Auth & Profile** | Resultado de revisiones y sanciones |
-| `taskit.auth.dead-letter` | Auth & Profile | Operación | Mensajes que no se pudieron procesar |
+| `taskit.auth.dead-letter` | RabbitMQ (dead letter exchange `taskit.dlx`) | Operación | Mensajes que no se pudieron procesar; es una **cola**, no se publica a mano |
 | `taskit.task.events` | Task Service | **Auth & Profile** | `TaskCompleted` (reputación) |
 
 ## 3. Eventos que publica Auth & Profile
 
-### `taskit.auth.events` (clave = `userId`)
+### `taskit.auth.events` (cabecera `key` = `userId`)
 
 **UserRegistered**: se creó una cuenta (registro local o primer login con Google).
 ```json
@@ -86,7 +95,7 @@ para su cola de moderación; este MS resuelve el reporte solo con un endpoint ma
 { "reportId": "…", "reporterId": "…", "revieweeId": "…", "reason": "…", "comment": "…|null", "createdAt": "…" }
 ```
 
-### `taskit.auth.audit` (clave = correo del usuario)
+### `taskit.auth.audit` (cabecera `key` = correo del usuario)
 
 **SecurityAudit**
 ```json
@@ -95,9 +104,9 @@ para su cola de moderación; este MS resuelve el reporte solo con un endpoint ma
   "ipAddress": "…|null", "occurredAt": "…" }
 ```
 
-## 4. Eventos que consume Auth & Profile (`taskit.security.events`)
+## 4. Eventos que consume Auth & Profile (routing key `taskit.security.events`)
 
-Los publica Security and Audit HITL con el mismo sobre (`producer` libre, p. ej. `security-service`).
+Los publica Security and Audit HITL en el exchange `taskit.events` con el mismo sobre (`producer` libre, p. ej. `security-service`). Este MS los recibe en su cola `auth-profile.security-events`.
 
 **IdentityVerificationResolved**: resultado de la revisión humana del documento.
 ```json
@@ -114,7 +123,7 @@ Efecto: cambia el estado de la cuenta, elimina su refresh token y rechaza sus ac
 `AccountStatusChanged`. No se puede sancionar a cuentas ADMIN.
 
 Errores de datos (JSON inválido, acción o decisión desconocida, usuario inexistente) no se reintentan y van al dead letter.
-Los errores transitorios se reintentan 3 veces (1 s entre intentos) antes de ir al dead letter.
+Los errores transitorios se reintentan 3 veces (1 s entre intentos) antes de ir al dead letter. Se rechazan sin reencolar y RabbitMQ los mueve a la cola `taskit.auth.dead-letter` (con la cabecera `x-death` que indica la cola de origen y el motivo).
 
 ## 5. Flujo de verificación de documentos
 
@@ -124,13 +133,13 @@ Front ── POST /api/v1/profiles/{userId}/document (multipart: file, documentT
    2. Guarda en Amazon S3, bucket PRIVADO "taskit-identity-documents", nombre {userId}/{uuid}.{ext}
    3. Perfil → PENDING_REVIEW y publica IdentityDocumentSubmitted (taskit.auth.events)
 
-HITL ◄── IdentityDocumentSubmitted
+HITL ◄── IdentityDocumentSubmitted (routing key taskit.auth.events)
    4. El revisor (usuario con rol ADMIN) pide el archivo:
       GET /api/v1/admin/verification-documents/{userId}/access   (Authorization: Bearer <JWT de un ADMIN>)
       → { "url": "https://…/taskit-identity-documents/…?X-Amz-Signature=…", "expiresAt": "…", "documentType": "…", … }
       El enlace es de SOLO LECTURA y vence en 10 minutos (SAS_TTL_MINUTES). Cada acceso queda auditado
       (log + evento SecurityAudit IDENTITY_DOCUMENT_ACCESSED).
-   5. El revisor decide y HITL publica IdentityVerificationResolved (taskit.security.events)
+   5. El revisor decide y HITL publica IdentityVerificationResolved (routing key taskit.security.events)
 
 Auth & Profile ◄── IdentityVerificationResolved
    6. Perfil → VERIFIED o REJECTED y publica IdentityVerificationUpdated
@@ -162,47 +171,57 @@ Auth & Profile ◄── IdentityVerificationResolved
   listar y resolver reportes a mano (`RESOLVED` o `DISMISSED`) mientras Security and Audit HITL no los consuma
   directamente del topic y aplique sus propias decisiones vía `AccountSanctionApplied`.
 
-## 7. Configuración de Kafka en AWS
+## 7. Configuración de RabbitMQ (CloudAMQP)
 
-Kafka corre en la misma EC2 que Redis, en un contenedor Docker (`apache/kafka:3.8.0`, un solo nodo en modo KRaft).
+Todos los microservicios se conectan a la misma instancia de CloudAMQP (AWS `sa-east-1`). La URL completa con el
+usuario y la contraseña sale del panel de la instancia (sección *AMQP details*, campo **URL**) y es un **secreto**:
+va solo en la variable de entorno `RABBITMQ_URL` (en el `.env` local o en las variables del servicio de ECS), nunca en
+el código, en un `.env.example`, en un commit ni en un chat. Si se expone, se rota desde el botón *Rotate password* del
+panel y se actualiza en todos los servicios.
 
-1. **Listener:** `BROKER://:9092` con `SASL_PLAINTEXT` y mecanismo `PLAIN`. El broker anuncia su **IP privada**
-   (`KAFKA_ADVERTISED_LISTENERS=BROKER://<IP privada de la EC2>:9092`), así que solo se llega desde dentro de la VPC.
-2. **Red:** el grupo de seguridad de la EC2 permite TCP 9092 solo desde el rango de la VPC. No hay acceso desde internet.
-3. **Usuario:** `taskit`, con la contraseña definida en `KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG` al crear el contenedor.
-4. **Topics** (3 particiones, factor de replicación 1): `taskit.auth.events`, `taskit.auth.audit`,
-   `taskit.security.events`, `taskit.task.events` y `taskit.auth.dead-letter`. Todos los servicios usan el mismo
-   usuario y los mismos topics (Payments y Security incluidos).
-5. Variables de entorno de este MS (servicio de ECS):
+**Topología** (la declara este MS al arrancar; los nombres se pueden cambiar con las variables `RABBITMQ_*`):
+
+| Elemento | Nombre por defecto | Detalle |
+|---|---|---|
+| Exchange de eventos | `taskit.events` | `topic`, durable. **Todos los equipos deben declararlo igual**: si uno lo declara con otro tipo o durabilidad, RabbitMQ rechaza la conexión con `PRECONDITION_FAILED` |
+| Dead letter exchange | `taskit.dlx` | `direct`, durable |
+| Cola de dead letter | `taskit.auth.dead-letter` | Durable, ligada a `taskit.dlx` con la misma routing key |
+| Cola de seguridad (consume este MS) | `auth-profile.security-events` | Durable, ligada a `taskit.events` con `taskit.security.events`; falla hacia `taskit.dlx` |
+| Cola de tareas (consume este MS) | `auth-profile.task-events` | Durable, ligada a `taskit.events` con `taskit.task.events`; falla hacia `taskit.dlx` |
+
+Este MS **solo publica** (no declara colas para) `taskit.auth.events` y `taskit.auth.audit`: las colas de esos canales
+las declara cada consumidor (HITL, Task Service, Payments...) ligadas al mismo exchange.
+
+**Variables de entorno de este MS** (servicio de ECS):
 
 ```
-KAFKA_ENABLED=true
-KAFKA_BOOTSTRAP_SERVERS=<IP privada de la EC2>:9092
-KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT
-KAFKA_SASL_MECHANISM=PLAIN
-KAFKA_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="taskit" password="<contraseña de Kafka>";
-KAFKA_CONSUMER_GROUP=auth-profile-service
+RABBITMQ_URL=amqps://<usuario>:<contraseña>@<host>.lmq.cloudamqp.com/<vhost>
+RABBITMQ_ENABLED=true
 ```
 
-Si Kafka no está disponible el servicio arranca igual: los eventos quedan en el outbox y se envían después.
-`KAFKA_ENABLED=false` apaga por completo el envío y el consumo (útil para pruebas sin broker).
+El resto (`RABBITMQ_EXCHANGE`, `RABBITMQ_DEAD_LETTER_EXCHANGE`, `RABBITMQ_SECURITY_QUEUE`, `RABBITMQ_SECURITY_ROUTING_KEY`,
+`RABBITMQ_TASK_QUEUE`, `RABBITMQ_TASK_ROUTING_KEY`) es opcional y solo se usa si el equipo acuerda otros nombres.
 
-Nota: `SASL_PLAINTEXT` no cifra el tráfico. Es aceptable mientras el broker solo sea accesible dentro de la VPC;
-para exponerlo fuera hay que pasar a `SASL_SSL` con certificado.
+Si RabbitMQ no está disponible el servicio arranca igual: los eventos quedan en el outbox y se envían después.
+`RABBITMQ_ENABLED=false` apaga por completo el envío y el consumo (útil para pruebas sin broker).
+
+Con `amqps` el tráfico va cifrado (TLS, puerto 5671); con `amqp` (puerto 5672) no, así que en la nube se usa siempre `amqps`.
 
 ## 8. Desarrollo local
 
 ```
-docker compose up -d        # Kafka (localhost:9092) y Redis (localhost:6379)
+docker compose up -d        # RabbitMQ (localhost:5672, panel en http://localhost:15672, guest/guest) y Redis (localhost:6379)
 ```
-En el `.env`: `REDIS_HOST=localhost`, `REDIS_PORT=6379`, `REDIS_SSL=false`. Kafka ya apunta a localhost por defecto.
-Para probar el consumo, publicar a mano en `taskit.security.events` (por ejemplo con `kafka-console-producer.sh`
-dentro del contenedor) un sobre como los de la sección 4.
+En el `.env`: `REDIS_HOST=localhost`, `REDIS_PORT=6379`, `REDIS_SSL=false`. RabbitMQ ya apunta a `amqp://guest:guest@localhost:5672/`
+por defecto. Para probar el consumo, en el panel de RabbitMQ abre el exchange `taskit.events`, sección *Publish message*,
+usa la routing key `taskit.security.events` y como cuerpo un sobre como los de la sección 4.
 
 ## 9. Guía para el equipo de Security and Audit HITL
 
-- **Consumir** `taskit.auth.events` (filtrar `eventType = IdentityDocumentSubmitted`) y `taskit.auth.audit`.
-  Deduplicar por `eventId`.
-- **Publicar** en `taskit.security.events` los eventos de la sección 4 usando el sobre común (generar un `eventId` UUID
-  nuevo por evento; reenviar el mismo `eventId` es seguro, se ignora).
+- **Consumir**: declarar una cola durable propia, ligarla al exchange `taskit.events` con las routing keys
+  `taskit.auth.events` (filtrar `eventType = IdentityDocumentSubmitted`) y `taskit.auth.audit`, y consumir de ella.
+  Deduplicar por `eventId`. Declarar la cola **antes** de que se publiquen los eventos que les interesan.
+- **Publicar** en el exchange `taskit.events`, con la routing key `taskit.security.events`, los eventos de la sección 4
+  usando el sobre común (generar un `eventId` UUID nuevo por evento; reenviar el mismo `eventId` es seguro, se ignora).
+  Conviene publicar como JSON persistente y con *publisher confirms* activados.
 - El revisor se autentica con el JWT que emite Auth & Profile (`POST /api/v1/auth/login`) y debe tener rol `ADMIN`.

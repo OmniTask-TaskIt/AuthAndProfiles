@@ -1,4 +1,4 @@
-package com.omnitask.AuthAndProfiles.infrastructure.adapters.out.kafka;
+package com.omnitask.AuthAndProfiles.infrastructure.adapters.out.rabbitmq;
 
 import org.springframework.data.mongodb.repository.MongoRepository;
 
