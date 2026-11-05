@@ -1,5 +1,6 @@
 package com.omnitask.AuthAndProfiles.messaging;
 
+import org.springframework.aop.ProxyMethodInvocation;
 import com.omnitask.AuthAndProfiles.domain.events.Topics;
 import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
 import com.omnitask.AuthAndProfiles.infrastructure.config.RabbitConfig;
@@ -80,11 +81,11 @@ class RabbitConfigTest {
     // ------------------------------------------------------------ reintentos
 
     private MethodInvocation invocationQueFalla(Throwable causa, AtomicInteger llamadas) throws Throwable {
-        MethodInvocation invocation = mock(MethodInvocation.class);
+        ProxyMethodInvocation invocation = mock(ProxyMethodInvocation.class);
         Message message = new Message(new byte[0], new MessageProperties());
-        // El interceptor de reintentos usa el método invocado como etiqueta de la operación
         when(invocation.getMethod()).thenReturn(Object.class.getMethod("toString"));
         when(invocation.getArguments()).thenReturn(new Object[]{null, message});
+        when(invocation.invocableClone()).thenReturn(invocation);
         when(invocation.proceed()).thenAnswer(call -> {
             llamadas.incrementAndGet();
             throw new ListenerExecutionFailedException("falló el listener", causa, message);
@@ -102,7 +103,8 @@ class RabbitConfigTest {
             MethodInvocation invocation = invocationQueFalla(causa, llamadas);
 
             assertThatThrownBy(() -> interceptor.invoke(invocation))
-                    .isInstanceOf(AmqpRejectAndDontRequeueException.class);
+                    .isInstanceOf(ListenerExecutionFailedException.class)
+                    .hasCauseInstanceOf(AmqpRejectAndDontRequeueException.class);
             assertThat(llamadas.get()).as("intentos para %s", causa.getClass().getSimpleName()).isEqualTo(1);
         }
     }
@@ -114,7 +116,8 @@ class RabbitConfigTest {
         MethodInvocation invocation = invocationQueFalla(new RuntimeException("mongo caído"), llamadas);
 
         assertThatThrownBy(() -> interceptor.invoke(invocation))
-                .isInstanceOf(AmqpRejectAndDontRequeueException.class);
+                .isInstanceOf(ListenerExecutionFailedException.class)
+                .hasCauseInstanceOf(AmqpRejectAndDontRequeueException.class);
 
         assertThat(llamadas.get()).isEqualTo(4); // el intento inicial más 3 reintentos
     }
