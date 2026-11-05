@@ -1,17 +1,18 @@
-package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.kafka;
+package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.rabbitmq;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omnitask.AuthAndProfiles.application.usecases.RecordTaskCompletedUseCase;
 import com.omnitask.AuthAndProfiles.domain.events.InboundEventTypes;
 import com.omnitask.AuthAndProfiles.domain.events.TaskCompletedEvent;
-import com.omnitask.AuthAndProfiles.domain.events.Topics;
 import com.omnitask.AuthAndProfiles.infrastructure.messaging.EventEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
 /**
@@ -19,8 +20,9 @@ import java.time.Instant;
  * <ul>
  * <li>TaskCompleted: suma una tarea completada al historial del prestador (providerId).</li>
  * </ul>
- * El topic se puede cambiar con app.kafka.task-events-topic. Los tipos desconocidos se ignoran (compatibilidad hacia
- * adelante). Los errores se propagan al DefaultErrorHandler (reintentos y dead letter).
+ * Consume la cola app.rabbit.task-queue, ligada a la routing key app.rabbit.task-routing-key (por defecto
+ * taskit.task.events). Los tipos desconocidos se ignoran (compatibilidad hacia adelante). Los errores se propagan al
+ * interceptor de reintentos de RabbitConfig (3 reintentos y luego dead letter).
  */
 @Slf4j
 @Component
@@ -31,18 +33,21 @@ public class TaskEventsListener {
     private final ProcessedEventRepository processedEventRepository;
     private final RecordTaskCompletedUseCase recordTaskCompletedUseCase;
 
-    @KafkaListener(topics = "${app.kafka.task-events-topic:" + Topics.TASK_EVENTS + "}",
-            groupId = "${app.kafka.consumer-group}", autoStartup = "${app.kafka.enabled:true}")
-    public void onMessage(String message) {
+    @RabbitListener(queues = "${app.rabbit.task-queue}", autoStartup = "${app.rabbit.enabled:true}")
+    public void onMessage(Message message) {
+        process(new String(message.getBody(), StandardCharsets.UTF_8));
+    }
+
+    public void process(String message) {
         EventEnvelope envelope = parseEnvelope(message);
 
         if (processedEventRepository.existsById(envelope.eventId())) {
-            log.info("[KAFKA] Evento {} ya procesado, se ignora.", envelope.eventId());
+            log.info("[RABBITMQ] Evento {} ya procesado, se ignora.", envelope.eventId());
             return;
         }
 
         if (!InboundEventTypes.TASK_COMPLETED.equals(envelope.eventType())) {
-            log.debug("[KAFKA] Tipo de evento ignorado: {}", envelope.eventType());
+            log.debug("[RABBITMQ] Tipo de evento ignorado: {}", envelope.eventType());
             return;
         }
 

@@ -1,4 +1,4 @@
-package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.kafka;
+package com.omnitask.AuthAndProfiles.infrastructure.adapters.in.rabbitmq;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,23 +9,24 @@ import com.omnitask.AuthAndProfiles.domain.enums.VerificationDecision;
 import com.omnitask.AuthAndProfiles.domain.events.AccountSanctionAppliedEvent;
 import com.omnitask.AuthAndProfiles.domain.events.IdentityVerificationResolvedEvent;
 import com.omnitask.AuthAndProfiles.domain.events.InboundEventTypes;
-import com.omnitask.AuthAndProfiles.domain.events.Topics;
 import com.omnitask.AuthAndProfiles.infrastructure.messaging.EventEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
 /**
- * Consume taskit.security.events (Security and Audit HITL):
+ * Consume la cola app.rabbit.security-queue, ligada a la routing key taskit.security.events (Security and Audit HITL):
  * <ul>
  * <li>IdentityVerificationResolved: refleja la aprobación o el rechazo del documento en el perfil.</li>
  * <li>AccountSanctionApplied: suspende, bloquea o reactiva la cuenta.</li>
  * </ul>
- * Los tipos desconocidos se ignoran (compatibilidad hacia adelante). Los errores se propagan al
- * DefaultErrorHandler (reintentos y dead letter).
+ * Los tipos desconocidos se ignoran (compatibilidad hacia adelante). Los errores se propagan al interceptor de
+ * reintentos de RabbitConfig (3 reintentos y luego dead letter).
  */
 @Slf4j
 @Component
@@ -39,13 +40,16 @@ public class SecurityEventsListener {
     private final ResolveIdentityVerificationUseCase resolveIdentityVerificationUseCase;
     private final ChangeAccountStatusUseCase changeAccountStatusUseCase;
 
-    @KafkaListener(topics = Topics.SECURITY_EVENTS, groupId = "${app.kafka.consumer-group}",
-            autoStartup = "${app.kafka.enabled:true}")
-    public void onMessage(String message) {
+    @RabbitListener(queues = "${app.rabbit.security-queue}", autoStartup = "${app.rabbit.enabled:true}")
+    public void onMessage(Message message) {
+        process(new String(message.getBody(), StandardCharsets.UTF_8));
+    }
+
+    public void process(String message) {
         EventEnvelope envelope = parseEnvelope(message);
 
         if (processedEventRepository.existsById(envelope.eventId())) {
-            log.info("[KAFKA] Evento {} ya procesado, se ignora.", envelope.eventId());
+            log.info("[RABBITMQ] Evento {} ya procesado, se ignora.", envelope.eventId());
             return;
         }
 
@@ -53,7 +57,7 @@ public class SecurityEventsListener {
             case InboundEventTypes.IDENTITY_VERIFICATION_RESOLVED -> handleVerificationResolved(envelope);
             case InboundEventTypes.ACCOUNT_SANCTION_APPLIED -> handleSanction(envelope);
             default -> {
-                log.debug("[KAFKA] Tipo de evento ignorado: {}", envelope.eventType());
+                log.debug("[RABBITMQ] Tipo de evento ignorado: {}", envelope.eventType());
                 return;
             }
         }

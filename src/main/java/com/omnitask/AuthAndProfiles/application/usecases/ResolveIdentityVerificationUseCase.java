@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 
 /**
  * Aplica el resultado de la revisión humana (HITL) del documento de identidad. Lo usan el consumidor de
- * Kafka y el endpoint manual de administración. Es idempotente: repetir la misma decisión no hace nada.
+ * RabbitMQ y el endpoint manual de administración. Es idempotente: repetir la misma decisión no hace nada.
  */
 @Slf4j
 @Service

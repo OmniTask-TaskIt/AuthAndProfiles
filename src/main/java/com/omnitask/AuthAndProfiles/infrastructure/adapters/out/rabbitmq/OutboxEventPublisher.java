@@ -1,4 +1,4 @@
-package com.omnitask.AuthAndProfiles.infrastructure.adapters.out.kafka;
+package com.omnitask.AuthAndProfiles.infrastructure.adapters.out.rabbitmq;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Publica dejando el evento en la tabla outbox; OutboxRelay se encarga de enviarlo a Kafka. */
+/** Publica dejando el evento en la tabla outbox; OutboxRelay se encarga de enviarlo a RabbitMQ. */
 @Component
 @RequiredArgsConstructor
 public class OutboxEventPublisher implements EventPublisher {

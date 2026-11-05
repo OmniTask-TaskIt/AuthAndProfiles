@@ -3,9 +3,9 @@ package com.omnitask.AuthAndProfiles.messaging;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.omnitask.AuthAndProfiles.application.usecases.RecordTaskCompletedUseCase;
-import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.kafka.ProcessedEvent;
-import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.kafka.ProcessedEventRepository;
-import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.kafka.TaskEventsListener;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.rabbitmq.ProcessedEvent;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.rabbitmq.ProcessedEventRepository;
+import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.rabbitmq.TaskEventsListener;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,7 +49,7 @@ class TaskEventsListenerTest {
         String message = envelope("evt-1", "TaskCompleted",
                 "{\"taskId\":\"task-9\",\"providerId\":\"user-1\",\"campoNuevo\":\"x\"}");
 
-        listener.onMessage(message);
+        listener.process(message);
 
         verify(recordTaskCompletedUseCase).execute("user-1");
         ArgumentCaptor<ProcessedEvent> captor = ArgumentCaptor.forClass(ProcessedEvent.class);
@@ -62,7 +62,7 @@ class TaskEventsListenerTest {
     void onMessage_deberiaIgnorarUnEventoYaProcesado() {
         when(processedEventRepository.existsById("evt-1")).thenReturn(true);
 
-        listener.onMessage(envelope("evt-1", "TaskCompleted", "{\"providerId\":\"user-1\"}"));
+        listener.process(envelope("evt-1", "TaskCompleted", "{\"providerId\":\"user-1\"}"));
 
         verifyNoInteractions(recordTaskCompletedUseCase);
         verify(processedEventRepository, never()).save(any());
@@ -70,7 +70,7 @@ class TaskEventsListenerTest {
 
     @Test
     void onMessage_deberiaIgnorarLosTiposDeEventoDesconocidos() {
-        listener.onMessage(envelope("evt-2", "TaskCreated", "{\"taskId\":\"task-9\"}"));
+        listener.process(envelope("evt-2", "TaskCreated", "{\"taskId\":\"task-9\"}"));
 
         verifyNoInteractions(recordTaskCompletedUseCase);
         verify(processedEventRepository, never()).save(any());
@@ -80,37 +80,37 @@ class TaskEventsListenerTest {
     void onMessage_noDeberiaMarcarElEventoComoProcesado_cuandoFallaElCasoDeUso() {
         doThrow(new IllegalStateException("Mongo caído")).when(recordTaskCompletedUseCase).execute("user-1");
 
-        assertThatThrownBy(() -> listener.onMessage(envelope("evt-3", "TaskCompleted", "{\"providerId\":\"user-1\"}")))
+        assertThatThrownBy(() -> listener.process(envelope("evt-3", "TaskCompleted", "{\"providerId\":\"user-1\"}")))
                 .isInstanceOf(IllegalStateException.class);
         verify(processedEventRepository, never()).save(any());
     }
 
     @Test
     void onMessage_deberiaLanzarExcepcion_cuandoElMensajeNoEsJsonValido() {
-        assertThatThrownBy(() -> listener.onMessage("esto no es json"))
+        assertThatThrownBy(() -> listener.process("esto no es json"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("sobre de evento válido");
-        assertThatThrownBy(() -> listener.onMessage(null))
+        assertThatThrownBy(() -> listener.process(null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void onMessage_deberiaLanzarExcepcion_cuandoFaltaElEventIdElTipoOElPayload() {
-        assertThatThrownBy(() -> listener.onMessage("{\"eventType\":\"TaskCompleted\",\"payload\":{}}"))
+        assertThatThrownBy(() -> listener.process("{\"eventType\":\"TaskCompleted\",\"payload\":{}}"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("eventId, eventType o payload");
-        assertThatThrownBy(() -> listener.onMessage("{\"eventId\":\"e\",\"payload\":{}}"))
+        assertThatThrownBy(() -> listener.process("{\"eventId\":\"e\",\"payload\":{}}"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> listener.onMessage("{\"eventId\":\"e\",\"eventType\":\"TaskCompleted\"}"))
+        assertThatThrownBy(() -> listener.process("{\"eventId\":\"e\",\"eventType\":\"TaskCompleted\"}"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> listener.onMessage("null"))
+        assertThatThrownBy(() -> listener.process("null"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void onMessage_deberiaLanzarExcepcion_cuandoElPayloadNoTieneLaFormaEsperada() {
         // payload es un texto, no un objeto: no se puede leer como TaskCompletedEvent
-        assertThatThrownBy(() -> listener.onMessage(envelope("evt-4", "TaskCompleted", "\"esto es un texto\"")))
+        assertThatThrownBy(() -> listener.process(envelope("evt-4", "TaskCompleted", "\"esto es un texto\"")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("TaskCompleted");
         verify(processedEventRepository, never()).save(any());
