@@ -2,6 +2,7 @@ package com.omnitask.AuthAndProfiles.application.usecases;
 
 import java.time.Instant;
 import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
+import com.omnitask.AuthAndProfiles.domain.policies.TermsPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.OtpGenerator;
@@ -68,7 +69,7 @@ public class RegisterUserUseCase {
                 .emailVerified(false)
                 .termsAccepted(request.isAcceptedTerms())
                 .termsAcceptedAt(LocalDateTime.now())
-                .termsVersion("1.0")
+                .termsVersion(TermsPolicy.CURRENT_VERSION)
                 .accountStatus(AccountStatus.PENDING_VERIFICATION)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -116,8 +117,8 @@ public class RegisterUserUseCase {
             throw e;
         }
 
-        log.info("[AUDIT] [SEC-AUTH-02] Registro exitoso con aceptación de términos v1.0. OTP enviado a ID: {}",
-                savedUser.getId());
+        log.info("[AUDIT] [SEC-AUTH-02] Registro exitoso con aceptación de términos v{}. OTP enviado a ID: {}",
+                TermsPolicy.CURRENT_VERSION, savedUser.getId());
         return savedUser;
     }
 

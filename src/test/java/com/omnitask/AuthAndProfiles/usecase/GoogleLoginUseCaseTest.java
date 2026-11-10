@@ -3,6 +3,7 @@ package com.omnitask.AuthAndProfiles.usecase;
 import static org.mockito.ArgumentMatchers.eq;
 import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
+import com.omnitask.AuthAndProfiles.domain.policies.TermsPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.application.usecases.GoogleLoginUseCase;
 
@@ -135,7 +136,7 @@ class GoogleLoginUseCaseTest {
         googleLoginUseCase.execute("google-token", true, CONTEXT);
 
         verify(userRepository).save(argThat((User u) -> u.isTermsAccepted()
-                && u.getTermsAcceptedAt() != null && "1.0".equals(u.getTermsVersion())));
+                && u.getTermsAcceptedAt() != null && TermsPolicy.CURRENT_VERSION.equals(u.getTermsVersion())));
     }
 
     @Test
