@@ -4,6 +4,7 @@ import com.omnitask.AuthAndProfiles.domain.enums.AccountStatus;
 import com.omnitask.AuthAndProfiles.domain.enums.AuthProvider;
 import com.omnitask.AuthAndProfiles.domain.enums.Role;
 import com.omnitask.AuthAndProfiles.domain.models.User;
+import com.omnitask.AuthAndProfiles.domain.policies.TermsPolicy;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,7 +50,7 @@ public class AdminSeeder implements CommandLineRunner {
                     .emailVerified(true)
                     .termsAccepted(true)
                     .termsAcceptedAt(LocalDateTime.now())
-                    .termsVersion("1.0")
+                    .termsVersion(TermsPolicy.CURRENT_VERSION)
                     .accountStatus(AccountStatus.ACTIVE)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())

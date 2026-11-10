@@ -16,6 +16,7 @@ import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedExcept
 import com.omnitask.AuthAndProfiles.domain.models.Profile;
 import com.omnitask.AuthAndProfiles.domain.models.User;
 import com.omnitask.AuthAndProfiles.domain.policies.AccountAccessPolicy;
+import com.omnitask.AuthAndProfiles.domain.policies.TermsPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
@@ -72,7 +73,7 @@ public class GithubLoginUseCase {
                     .emailVerified(true)
                     .termsAccepted(acceptedTerms)
                     .termsAcceptedAt(LocalDateTime.now())
-                    .termsVersion("1.0")
+                    .termsVersion(TermsPolicy.CURRENT_VERSION)
                     .accountStatus(AccountStatus.ACTIVE)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())

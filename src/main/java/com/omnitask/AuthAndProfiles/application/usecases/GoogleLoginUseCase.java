@@ -2,6 +2,7 @@ package com.omnitask.AuthAndProfiles.application.usecases;
 
 import java.time.Instant;
 import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
+import com.omnitask.AuthAndProfiles.domain.policies.TermsPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
 import com.omnitask.AuthAndProfiles.application.services.GoogleAuthService;
@@ -60,7 +61,7 @@ public class GoogleLoginUseCase {
                     .emailVerified(true)
                     .termsAccepted(acceptedTerms)
                     .termsAcceptedAt(LocalDateTime.now())
-                    .termsVersion("1.0")
+                    .termsVersion(TermsPolicy.CURRENT_VERSION)
                     .accountStatus(AccountStatus.ACTIVE)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())

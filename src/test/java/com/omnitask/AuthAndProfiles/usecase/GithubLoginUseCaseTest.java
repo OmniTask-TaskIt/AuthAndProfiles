@@ -15,6 +15,7 @@ import com.omnitask.AuthAndProfiles.domain.events.UserRegisteredEvent;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AccountRestrictedException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.AuthenticationFailedException;
 import com.omnitask.AuthAndProfiles.domain.models.User;
+import com.omnitask.AuthAndProfiles.domain.policies.TermsPolicy;
 import com.omnitask.AuthAndProfiles.domain.ports.out.events.EventPublisher;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.in.web.dto.AuthResponseDTO;
 import com.omnitask.AuthAndProfiles.infrastructure.adapters.out.mongo.ProfileRepository;
@@ -190,7 +191,7 @@ class GithubLoginUseCaseTest {
         githubLoginUseCase.execute("auth-code", true, CONTEXT);
 
         verify(userRepository).save(argThat((User u) -> u.isTermsAccepted()
-                && u.getTermsAcceptedAt() != null && "1.0".equals(u.getTermsVersion())));
+                && u.getTermsAcceptedAt() != null && TermsPolicy.CURRENT_VERSION.equals(u.getTermsVersion())));
     }
 
     @Test
