@@ -22,6 +22,9 @@ public final class Topics {
     /** Cola (y routing key del dead letter exchange) con los mensajes que no se pudieron procesar tras los reintentos. */
     public static final String DEAD_LETTER = "taskit.auth.dead-letter";
 
+    // AITA
+    public static final String AITA_EVENTS = "taskit.aita.events";
+
     private Topics() {
     }
 }

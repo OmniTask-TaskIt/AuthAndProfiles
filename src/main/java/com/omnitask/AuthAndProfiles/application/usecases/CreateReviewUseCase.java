@@ -2,6 +2,7 @@ package com.omnitask.AuthAndProfiles.application.usecases;
 
 import com.omnitask.AuthAndProfiles.application.services.ReputationService;
 import com.omnitask.AuthAndProfiles.domain.events.EventType;
+import com.omnitask.AuthAndProfiles.domain.events.ReviewCompletedEvent;
 import com.omnitask.AuthAndProfiles.domain.events.ReviewCreatedEvent;
 import com.omnitask.AuthAndProfiles.domain.exceptions.ConflictException;
 import com.omnitask.AuthAndProfiles.domain.exceptions.NotFoundException;
@@ -36,6 +37,7 @@ public class CreateReviewUseCase {
     private final UserRepository userRepository;
     private final ReputationService reputationService;
     private final EventPublisher eventPublisher;
+    
 
     public Review execute(String reviewerEmail, String taskId, String revieweeId, int rating, String comment) {
         User reviewer = userRepository.findByEmail(reviewerEmail)
@@ -63,10 +65,13 @@ public class CreateReviewUseCase {
         eventPublisher.publish(EventType.REVIEW_CREATED, revieweeId,
                 new ReviewCreatedEvent(review.getId(), taskId, reviewer.getId(), revieweeId, rating, Instant.now()));
 
+        // evento para AITA
+        eventPublisher.publish(EventType.REVIEW_COMPLETED, revieweeId,
+                new ReviewCompletedEvent(review.getId(), taskId, reviewer.getId(), revieweeId, rating, comment, Instant.now()));
+
         reputationService.recalculate(revieweeId);
 
-        log.info("[AUDIT] Reseña {} registrada: {} calificó a {} en la tarea {} con {} estrellas", review.getId(),
-                reviewer.getId(), revieweeId, taskId, rating);
+        log.info("[AUDIT] Reseña {} registrada...", review.getId());
         return review;
     }
 }

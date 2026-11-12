@@ -10,7 +10,9 @@ public enum EventType {
     SECURITY_AUDIT("SecurityAudit", Topics.AUTH_AUDIT),
     REVIEW_CREATED("ReviewCreated", Topics.AUTH_EVENTS),
     REPUTATION_UPDATED("ReputationUpdated", Topics.AUTH_EVENTS),
-    USER_REPORTED("UserReported", Topics.AUTH_EVENTS);
+    USER_REPORTED("UserReported", Topics.AUTH_EVENTS),
+    // AITA
+    REVIEW_COMPLETED("ReviewCompletedEvent", Topics.AITA_EVENTS);
 
     private final String eventName;
     private final String topic;
