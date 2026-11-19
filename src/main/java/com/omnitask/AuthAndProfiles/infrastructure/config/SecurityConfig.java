@@ -45,7 +45,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable)
+                // Safe: stateless JWT API (Authorization header, no session cookies), so CSRF does not apply
+                .csrf(AbstractHttpConfigurer::disable) // NOSONAR
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(

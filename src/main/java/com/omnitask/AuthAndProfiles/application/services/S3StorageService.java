@@ -145,7 +145,11 @@ public class S3StorageService {
 
     private String publicUrl(String bucket, String key) {
         if (!endpoint.isBlank()) {
-            return endpoint.replaceAll("/+$", "") + "/" + bucket + "/" + key;
+            int end = endpoint.length();
+            while (end > 0 && endpoint.charAt(end - 1) == '/') {
+                end--;
+            }
+            return endpoint.substring(0, end) + "/" + bucket + "/" + key;
         }
         return "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key;
     }
