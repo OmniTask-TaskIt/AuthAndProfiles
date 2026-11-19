@@ -15,7 +15,7 @@ public class RegisterRequestDTO {
 
     @NotBlank(message = "El email es obligatorio")
     @Email(message = "Formato de email inválido")
-    @Pattern(regexp = "^[A-Za-z0-9._%+-]+@(gmail\\.com|hotmail\\.com|yahoo\\.com|.*\\.edu|.*\\.edu\\.[a-z]{2}|[A-Za-z0-9.-]+\\.[a-z]{2,})$", message = "El correo debe ser de dominio Gmail, Hotmail, Yahoo o un correo institucional/corporativo válido.")
+    @Pattern(regexp = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[a-z]{2,}$", message = "El correo debe ser de dominio Gmail, Hotmail, Yahoo o un correo institucional/corporativo válido.")
     private String email;
 
     @NotBlank(message = "La contraseña es obligatoria")
